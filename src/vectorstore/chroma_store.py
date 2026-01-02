@@ -138,13 +138,16 @@ class ChromaStore:
         # Generate query embedding
         query_embedding = self.embedder.embed(query_text)
         
-        # Build where filter
-        where_filter = self._build_where_filter(doc_types, collections, document_id)
+        # Build where filter (excludes collections - handled in post-filter)
+        where_filter = self._build_where_filter(doc_types, document_id)
+        
+        # If filtering by collections, fetch more results for post-filtering
+        fetch_n = n_results * 3 if collections else n_results
         
         # Query ChromaDB
         results = self._collection.query(
             query_embeddings=[query_embedding],
-            n_results=n_results,
+            n_results=fetch_n,
             where=where_filter if where_filter else None,
             include=["documents", "metadatas", "distances"]
         )
@@ -153,20 +156,34 @@ class ChromaStore:
         formatted = []
         if results["ids"] and results["ids"][0]:
             for i, chunk_id in enumerate(results["ids"][0]):
+                metadata = results["metadatas"][0][i]
+                
+                # Post-filter by collections if specified
+                if collections:
+                    chunk_collections = metadata.get("collections", "")
+                    chunk_coll_list = [c.strip() for c in chunk_collections.split(",") if c.strip()]
+                    
+                    # Check if any requested collection is in chunk's collections
+                    if not any(c in chunk_coll_list for c in collections):
+                        continue
+                
                 formatted.append({
                     "id": chunk_id,
                     "content": results["documents"][0][i],
-                    "metadata": results["metadatas"][0][i],
+                    "metadata": metadata,
                     "distance": results["distances"][0][i],
-                    "similarity": 1 - results["distances"][0][i]  # Convert distance to similarity
+                    "similarity": 1 - results["distances"][0][i]
                 })
+                
+                # Stop once we have enough results
+                if len(formatted) >= n_results:
+                    break
         
         return formatted
     
     def _build_where_filter(
         self,
         doc_types: List[str] = None,
-        collections: List[str] = None,
         document_id: str = None
     ) -> Optional[Dict]:
         """Build ChromaDB where filter from parameters"""
@@ -181,11 +198,8 @@ class ChromaStore:
             else:
                 conditions.append({"doc_type": {"$in": doc_types}})
         
-        if collections:
-            # For comma-separated collections, use $contains
-            # Note: This is a simplified approach, ChromaDB has limitations
-            for collection in collections:
-                conditions.append({"collections": {"$contains": collection}})
+        # Note: collections filtering is done in Python post-filter
+        # because ChromaDB doesn't support $contains operator
         
         if not conditions:
             return None
