@@ -1,94 +1,121 @@
-import React, { useState, useEffect } from 'react';
-import Sidebar from './components/Sidebar';
-import ChatInterface from './components/ChatInterface';
-import FileUpload from './components/FileUpload';
-import Settings from './components/Settings';
+import { useEffect, useCallback } from 'react'
+import useStore from './store/store'
+import api from './services/api'
+import useKeyboardShortcuts from './hooks/useKeyboardShortcuts'
 
-function App() {
-  const [view, setView] = useState('chat'); // chat, upload, settings
-  const [collections, setCollections] = useState([]);
-  const [documents, setDocuments] = useState([]);
-  const [selectedCollection, setSelectedCollection] = useState(null);
-  const [backendStatus, setBackendStatus] = useState('checking');
+// Layout Components
+import CommandBar from './components/layout/CommandBar'
+import KnowledgeManager from './components/layout/KnowledgeManager'
+import MainWorkspace from './components/layout/MainWorkspace'
+import SourcesPanel from './components/layout/SourcesPanel'
 
-  // Check backend health on mount
-  useEffect(() => {
-    const checkBackend = async () => {
-      try {
-        const response = await fetch('http://127.0.0.1:8000/health');
-        if (response.ok) {
-          setBackendStatus('connected');
-          fetchData();
-        } else {
-          setBackendStatus('error');
-        }
-      } catch (error) {
-        setBackendStatus('error');
-      }
-    };
+// Feature Components
+import IngestionPanel from './components/ingestion/IngestionPanel'
+import SettingsDrawer from './components/settings/SettingsDrawer'
 
-    checkBackend();
-    const interval = setInterval(checkBackend, 5000);
-    return () => clearInterval(interval);
-  }, []);
+/**
+ * ORION - Offline Multimodal Intelligence Workspace
+ * Three-pane desktop layout for research and knowledge exploration
+ */
+export default function App() {
+  const {
+    setBackendStatus,
+    setSystemInfo,
+    setCollections,
+    setDocuments,
+    toggleSettings,
+    toggleIngestion
+  } = useStore()
 
-  const fetchData = async () => {
+  // Backend health check and data fetch
+  const checkBackend = useCallback(async () => {
     try {
-      // Fetch collections
-      const collRes = await fetch('http://127.0.0.1:8000/api/collections');
-      if (collRes.ok) {
-        const data = await collRes.json();
-        setCollections(data);
-      }
+      const isHealthy = await api.checkHealth()
+      setBackendStatus(isHealthy ? 'connected' : 'disconnected')
 
-      // Fetch documents
-      const docRes = await fetch('http://127.0.0.1:8000/api/documents');
-      if (docRes.ok) {
-        const data = await docRes.json();
-        setDocuments(data);
+      if (isHealthy) {
+        // Fetch stats
+        try {
+          const stats = await api.getStats()
+          setSystemInfo({
+            totalChunks: stats.total_chunks,
+            totalDocuments: stats.total_documents,
+            vectorDbStatus: 'Online'
+          })
+        } catch (e) {
+          console.warn('Stats not available:', e.message)
+        }
+
+        // Fetch model status
+        try {
+          const modelStatus = await api.getModelStatus()
+          setSystemInfo({
+            llmModel: modelStatus.llm?.model || 'Unknown',
+            llmAvailable: modelStatus.llm?.available
+          })
+        } catch (e) {
+          console.warn('Model status not available:', e.message)
+        }
+
+        // Fetch collections
+        try {
+          const collections = await api.getCollections()
+          setCollections(collections)
+        } catch (e) {
+          console.warn('Collections not available:', e.message)
+        }
+
+        // Fetch documents
+        try {
+          const documents = await api.getDocuments()
+          setDocuments(documents)
+        } catch (e) {
+          console.warn('Documents not available:', e.message)
+        }
       }
-    } catch (error) {
-      console.error('Failed to fetch data:', error);
+    } catch {
+      setBackendStatus('disconnected')
     }
-  };
+  }, [setBackendStatus, setSystemInfo, setCollections, setDocuments])
 
-  const handleUploadComplete = () => {
-    fetchData();
-    setView('chat');
-  };
+  // Initial check and polling
+  useEffect(() => {
+    checkBackend()
+    const interval = setInterval(checkBackend, 10000) // Check every 10s
+    return () => clearInterval(interval)
+  }, [checkBackend])
+
+  // Global keyboard shortcuts
+  useKeyboardShortcuts({
+    'ctrl+,': () => toggleSettings(),
+    'ctrl+i': () => toggleIngestion(),
+    'ctrl+k': () => {
+      // Focus search in knowledge manager
+      const searchInput = document.querySelector('input[placeholder*="Search"]')
+      searchInput?.focus()
+    }
+  })
 
   return (
-    <div className="app">
-      <Sidebar
-        collections={collections}
-        documents={documents}
-        selectedCollection={selectedCollection}
-        onSelectCollection={setSelectedCollection}
-        view={view}
-        onViewChange={setView}
-        backendStatus={backendStatus}
-      />
+    <div className="h-screen flex flex-col overflow-hidden bg-orion-bg-primary">
+      {/* Top Command Bar */}
+      <CommandBar />
 
-      <main className="main-content">
-        {view === 'chat' && (
-          <ChatInterface
-            selectedCollection={selectedCollection}
-          />
-        )}
+      {/* Main Three-Pane Layout */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Left: Knowledge Manager */}
+        <KnowledgeManager />
 
-        {view === 'upload' && (
-          <FileUpload
-            collections={collections}
-            onUploadComplete={handleUploadComplete}
-          />
-        )}
+        {/* Center: Main Workspace */}
+        <MainWorkspace />
 
-        {view === 'settings' && (
-          <Settings />
-        )}
-      </main>
+        {/* Right: Sources Panel */}
+        <SourcesPanel />
+      </div>
+
+      {/* Modal Overlays */}
+      <IngestionPanel />
+      <SettingsDrawer />
     </div>
-  );
+  )
 }
-
-export default App;
