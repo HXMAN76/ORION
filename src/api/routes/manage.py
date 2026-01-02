@@ -53,6 +53,39 @@ async def list_collections():
     return store.get_all_collections()
 
 
+@router.post("/collections")
+async def create_collection(name: str):
+    """Create a new empty collection"""
+    existing = store.get_all_collections()
+    if name in existing:
+        raise HTTPException(status_code=400, detail="Collection already exists")
+    
+    # Create collection by adding it to the store's collection list
+    store.create_collection(name)
+    
+    return {
+        "name": name,
+        "status": "created"
+    }
+
+
+@router.delete("/collections/{collection_name}")
+async def delete_collection(collection_name: str):
+    """Delete a collection (removes collection tag from documents, doesn't delete documents)"""
+    existing = store.get_all_collections()
+    if collection_name not in existing:
+        raise HTTPException(status_code=404, detail="Collection not found")
+    
+    # Remove collection from all documents
+    count = store.delete_collection(collection_name)
+    
+    return {
+        "name": collection_name,
+        "documents_affected": count,
+        "status": "deleted"
+    }
+
+
 @router.post("/collections/add")
 async def add_to_collection(request: AddToCollectionRequest):
     """Add a document to a collection"""

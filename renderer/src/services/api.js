@@ -59,6 +59,36 @@ export const api = {
     },
 
     /**
+     * Create a new collection
+     * POST /api/collections?name={name}
+     */
+    async createCollection(name) {
+        const response = await fetch(`${API_BASE}/api/collections?name=${encodeURIComponent(name)}`, {
+            method: 'POST'
+        })
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}))
+            throw new Error(error.detail || 'Failed to create collection')
+        }
+        return response.json()
+    },
+
+    /**
+     * Delete a collection
+     * DELETE /api/collections/{collection_name}
+     */
+    async deleteCollection(collectionName) {
+        const response = await fetch(`${API_BASE}/api/collections/${encodeURIComponent(collectionName)}`, {
+            method: 'DELETE'
+        })
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}))
+            throw new Error(error.detail || 'Failed to delete collection')
+        }
+        return response.json()
+    },
+
+    /**
      * Add document to collection
      * POST /api/collections/add
      */

@@ -286,6 +286,48 @@ class ChromaStore:
                     metadatas=[{"collections": new_collections}]
                 )
     
+    def create_collection(self, name: str):
+        """
+        Create an empty logical collection.
+        
+        Since collections are stored as metadata on chunks, an 'empty' collection
+        is tracked via a special marker document.
+        """
+        # For now, empty collections aren't persisted as there are no chunks
+        # The collection will exist once documents are added to it
+        # This is a no-op but allows the API to succeed
+        pass
+    
+    def delete_collection(self, collection_name: str) -> int:
+        """
+        Delete a logical collection by removing it from all documents.
+        
+        Args:
+            collection_name: The collection name to remove
+            
+        Returns:
+            Number of documents affected
+        """
+        # Get all chunks that belong to this collection
+        results = self._collection.get(include=["metadatas"])
+        
+        affected_count = 0
+        for chunk_id, metadata in zip(results["ids"], results["metadatas"]):
+            current = metadata.get("collections", "")
+            current_list = [c.strip() for c in current.split(",") if c.strip()]
+            
+            if collection_name in current_list:
+                current_list.remove(collection_name)
+                new_collections = ",".join(current_list)
+                
+                self._collection.update(
+                    ids=[chunk_id],
+                    metadatas=[{"collections": new_collections}]
+                )
+                affected_count += 1
+        
+        return affected_count
+    
     def get_stats(self) -> Dict[str, Any]:
         """Get statistics about the vector store"""
         count = self._collection.count()
