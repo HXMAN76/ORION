@@ -110,7 +110,8 @@ class EnhancedVoiceProcessor(BaseProcessor):
                 compute_type=compute_type,
                 download_root=str(config.MODELS_DIR / "whisper")
             )
-            logger.info("Whisper model loaded successfully")
+            self._whisper_type = "faster-whisper"
+            logger.info("Faster-Whisper model loaded successfully")
             return self._whisper
             
         except ImportError:
@@ -118,9 +119,22 @@ class EnhancedVoiceProcessor(BaseProcessor):
             try:
                 import whisper
                 self._whisper = whisper.load_model(self.whisper_model)
+                self._whisper_type = "openai-whisper"
+                logger.info("OpenAI Whisper model loaded successfully")
                 return self._whisper
             except ImportError:
                 logger.error("No Whisper implementation available")
+                return None
+        except Exception as e:
+            logger.error(f"Failed to load faster-whisper: {e}")
+            # Try openai-whisper as fallback
+            try:
+                import whisper
+                self._whisper = whisper.load_model(self.whisper_model)
+                self._whisper_type = "openai-whisper"
+                logger.info("Fallback to OpenAI Whisper successful")
+                return self._whisper
+            except Exception:
                 return None
     
     def process(self, file_path: Path, document_id: Optional[str] = None) -> List[Chunk]:
@@ -280,20 +294,17 @@ class EnhancedVoiceProcessor(BaseProcessor):
         }
     
     def _transcribe(self, audio_path: str, language: str = None) -> List[Dict]:
-        """Transcribe audio with Faster-Whisper."""
+        """Transcribe audio with Faster-Whisper or OpenAI Whisper."""
         whisper = self._get_whisper()
         if whisper is None:
             return []
         
         try:
-            # Check if using faster-whisper or openai-whisper
-            if hasattr(whisper, 'transcribe') and hasattr(whisper, 'model'):
-                # OpenAI Whisper
-                result = whisper.transcribe(audio_path, language=language)
-                return [{"start": s["start"], "end": s["end"], "text": s["text"]}
-                        for s in result.get("segments", [])]
-            else:
-                # Faster-Whisper
+            # Check which whisper implementation we're using
+            whisper_type = getattr(self, '_whisper_type', None)
+            
+            if whisper_type == "faster-whisper":
+                # Faster-Whisper returns (generator, info)
                 segments, info = whisper.transcribe(
                     audio_path,
                     language=language,
@@ -309,8 +320,14 @@ class EnhancedVoiceProcessor(BaseProcessor):
                         "text": segment.text.strip()
                     })
                 
-                logger.info(f"Transcription complete: {len(result)} segments")
+                logger.info(f"Transcription complete (faster-whisper): {len(result)} segments")
                 return result
+            else:
+                # OpenAI Whisper returns dict
+                result = whisper.transcribe(audio_path, language=language)
+                segments = result.get("segments", []) if isinstance(result, dict) else []
+                return [{"start": s["start"], "end": s["end"], "text": s["text"]}
+                        for s in segments]
                 
         except Exception as e:
             logger.error(f"Transcription error: {e}")
