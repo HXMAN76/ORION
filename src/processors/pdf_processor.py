@@ -1,282 +1,147 @@
-"""
-PDF Processor with OCR support.
-Extracts text, images, tables from PDF files and processes embedded images with OCR.
-"""
-
-import logging
+"""PDF document processor with text, table, and image extraction"""
 from pathlib import Path
 from typing import List, Optional
 import fitz  # PyMuPDF
-from PIL import Image
 import io
 
-from .base import BaseProcessor, Chunk, ProcessingError
-
-# Lazy imports for optional dependencies
-try:
-    from paddleocr import PaddleOCR
-    PADDLE_AVAILABLE = True
-except ImportError:
-    PADDLE_AVAILABLE = False
-
-logger = logging.getLogger(__name__)
+from .base import BaseProcessor, Chunk
+from ..chunking import Chunker
 
 
 class PDFProcessor(BaseProcessor):
-    """
-    Process PDF files extracting text, tables, and images.
-    Uses PyMuPDF for text extraction and PaddleOCR for embedded images.
-    """
+    """Process PDF files extracting text, tables, and images"""
     
-    SUPPORTED_EXTENSIONS = {".pdf"}
+    @property
+    def supported_extensions(self) -> List[str]:
+        return [".pdf"]
     
-    def __init__(self, config: Optional[any] = None):
+    @property
+    def doc_type(self) -> str:
+        return "pdf"
+    
+    def __init__(self, chunker: Optional[Chunker] = None, use_ocr: bool = True):
         """
         Initialize PDF processor.
         
         Args:
-            config: Configuration object with OCR settings
+            chunker: Text chunker instance (uses default if not provided)
+            use_ocr: Whether to use OCR for scanned pages/images
         """
-        super().__init__(config)
-        self.ocr = None
-        
-        # Initialize OCR if enabled and available
-        if config and config.processing.ocr_enabled and PADDLE_AVAILABLE:
+        self.chunker = chunker or Chunker()
+        self.use_ocr = use_ocr
+        self._ocr = None
+    
+    def _get_ocr(self):
+        """Lazy load OCR engine"""
+        if self._ocr is None and self.use_ocr:
             try:
-                self.ocr = PaddleOCR(
-                    use_angle_cls=True,
-                    lang=config.processing.ocr_language,
-                    show_log=False
-                )
-                logger.info("PaddleOCR initialized successfully")
-            except Exception as e:
-                logger.warning(f"Failed to initialize PaddleOCR: {e}")
-                self.ocr = None
+                from paddleocr import PaddleOCR
+                self._ocr = PaddleOCR(use_angle_cls=True, lang='en', show_log=False)
+            except ImportError:
+                print("Warning: PaddleOCR not installed, OCR disabled")
+        return self._ocr
     
-    def supports(self, file_path: Path) -> bool:
-        """Check if file is a PDF"""
-        return file_path.suffix.lower() in self.SUPPORTED_EXTENSIONS
-    
-    def process(self, file_path: Path) -> List[Chunk]:
+    def process(self, file_path: Path, document_id: Optional[str] = None) -> List[Chunk]:
         """
-        Process PDF file and extract all content.
+        Process a PDF file and extract chunks.
         
         Args:
-            file_path: Path to PDF file
+            file_path: Path to the PDF file
+            document_id: Optional document identifier
             
         Returns:
-            List of Chunk objects with extracted content
+            List of Chunk objects with text content and metadata
         """
-        self.validate_file(file_path)
+        file_path = Path(file_path)
+        if not file_path.exists():
+            raise FileNotFoundError(f"PDF file not found: {file_path}")
         
-        chunks = []
-        chunk_index = 0
+        document_id = document_id or self._generate_document_id(file_path)
+        chunks: List[Chunk] = []
         
-        try:
-            # Open PDF
-            doc = fitz.open(file_path)
-            logger.info(f"Processing PDF: {file_path.name} ({doc.page_count} pages)")
-            
-            for page_num in range(doc.page_count):
-                page = doc[page_num]
-                
-                # Extract text content
-                text = page.get_text("text").strip()
-                if text:
-                    chunk = self._create_chunk(
-                        content=text,
-                        source=str(file_path),
-                        file_type="pdf",
-                        chunk_index=chunk_index,
-                        page=page_num + 1,
-                        total_pages=doc.page_count
-                    )
-                    chunks.append(chunk)
-                    chunk_index += 1
-                
-                # Extract tables
-                tables = self._extract_tables(page)
-                for table_idx, table_text in enumerate(tables):
-                    chunk = self._create_chunk(
-                        content=table_text,
-                        source=str(file_path),
-                        file_type="pdf",
-                        chunk_index=chunk_index,
-                        page=page_num + 1,
-                        content_type="table",
-                        table_index=table_idx
-                    )
-                    chunks.append(chunk)
-                    chunk_index += 1
-                
-                # Extract images and run OCR
-                if self.ocr:
-                    image_chunks = self._extract_images_with_ocr(page, file_path, page_num + 1, chunk_index)
-                    chunks.extend(image_chunks)
-                    chunk_index += len(image_chunks)
-            
-            doc.close()
-            logger.info(f"Extracted {len(chunks)} chunks from {file_path.name}")
-            
-        except Exception as e:
-            raise ProcessingError(f"Failed to process PDF {file_path}: {str(e)}")
+        doc = fitz.open(file_path)
         
+        for page_num, page in enumerate(doc, start=1):
+            # Extract text
+            text = page.get_text("text")
+            
+            # If no text found, try OCR
+            if not text.strip() and self.use_ocr:
+                text = self._ocr_page(page)
+            
+            if text.strip():
+                # Chunk the text
+                text_chunks = self.chunker.chunk(text)
+                
+                for idx, chunk_text in enumerate(text_chunks):
+                    chunks.append(Chunk(
+                        content=chunk_text,
+                        document_id=document_id,
+                        doc_type=self.doc_type,
+                        source_file=str(file_path),
+                        page=page_num,
+                        metadata={
+                            "chunk_index": idx,
+                            "total_chunks_in_page": len(text_chunks)
+                        }
+                    ))
+            
+            # Extract tables as markdown
+            tables = self._extract_tables(page)
+            for table_idx, table_md in enumerate(tables):
+                chunks.append(Chunk(
+                    content=table_md,
+                    document_id=document_id,
+                    doc_type=self.doc_type,
+                    source_file=str(file_path),
+                    page=page_num,
+                    metadata={
+                        "content_type": "table",
+                        "table_index": table_idx
+                    }
+                ))
+        
+        doc.close()
         return chunks
     
-    def _extract_tables(self, page: fitz.Page) -> List[str]:
-        """
-        Extract tables from PDF page and convert to markdown.
-        
-        Args:
-            page: PyMuPDF page object
-            
-        Returns:
-            List of table contents as markdown strings
-        """
-        tables = []
-        
-        try:
-            # Extract tables using PyMuPDF
-            tabs = page.find_tables()
-            
-            for table in tabs:
-                # Convert table to markdown format
-                markdown_table = self._table_to_markdown(table)
-                if markdown_table:
-                    tables.append(markdown_table)
-        
-        except Exception as e:
-            logger.warning(f"Failed to extract tables: {e}")
-        
-        return tables
-    
-    def _table_to_markdown(self, table) -> Optional[str]:
-        """
-        Convert PyMuPDF table to markdown format.
-        
-        Args:
-            table: PyMuPDF table object
-            
-        Returns:
-            Markdown formatted table string
-        """
-        try:
-            rows = table.extract()
-            if not rows:
-                return None
-            
-            # Build markdown table
-            md_lines = []
-            
-            # Header
-            if rows:
-                header = " | ".join(str(cell) if cell else "" for cell in rows[0])
-                md_lines.append(f"| {header} |")
-                md_lines.append("|" + " --- |" * len(rows[0]))
-            
-            # Rows
-            for row in rows[1:]:
-                row_text = " | ".join(str(cell) if cell else "" for cell in row)
-                md_lines.append(f"| {row_text} |")
-            
-            return "\n".join(md_lines)
-        
-        except Exception as e:
-            logger.warning(f"Failed to convert table to markdown: {e}")
-            return None
-    
-    def _extract_images_with_ocr(
-        self,
-        page: fitz.Page,
-        file_path: Path,
-        page_num: int,
-        start_chunk_index: int
-    ) -> List[Chunk]:
-        """
-        Extract images from page and run OCR.
-        
-        Args:
-            page: PyMuPDF page object
-            file_path: Source PDF path
-            page_num: Page number
-            start_chunk_index: Starting chunk index
-            
-        Returns:
-            List of chunks with OCR text
-        """
-        chunks = []
-        chunk_index = start_chunk_index
-        
-        try:
-            # Get images from page
-            image_list = page.get_images()
-            
-            for img_idx, img in enumerate(image_list):
-                try:
-                    # Extract image
-                    xref = img[0]
-                    base_image = page.parent.extract_image(xref)
-                    image_bytes = base_image["image"]
-                    
-                    # Convert to PIL Image
-                    pil_image = Image.open(io.BytesIO(image_bytes))
-                    
-                    # Run OCR
-                    ocr_text = self._run_ocr(pil_image)
-                    
-                    if ocr_text and ocr_text.strip():
-                        chunk = self._create_chunk(
-                            content=ocr_text,
-                            source=str(file_path),
-                            file_type="pdf",
-                            chunk_index=chunk_index,
-                            page=page_num,
-                            content_type="image_ocr",
-                            image_index=img_idx
-                        )
-                        chunks.append(chunk)
-                        chunk_index += 1
-                
-                except Exception as e:
-                    logger.warning(f"Failed to process image {img_idx} on page {page_num}: {e}")
-                    continue
-        
-        except Exception as e:
-            logger.warning(f"Failed to extract images from page {page_num}: {e}")
-        
-        return chunks
-    
-    def _run_ocr(self, image: Image.Image) -> str:
-        """
-        Run OCR on an image.
-        
-        Args:
-            image: PIL Image object
-            
-        Returns:
-            Extracted text
-        """
-        if not self.ocr:
+    def _ocr_page(self, page) -> str:
+        """Run OCR on a page"""
+        ocr = self._get_ocr()
+        if ocr is None:
             return ""
         
         try:
-            # Convert to numpy array
-            import numpy as np
-            img_array = np.array(image)
+            # Render page to image
+            pix = page.get_pixmap(dpi=150)
+            img_bytes = pix.tobytes("png")
             
             # Run OCR
-            result = self.ocr.ocr(img_array, cls=True)
+            result = ocr.ocr(img_bytes, cls=True)
             
-            # Extract text from results
             if result and result[0]:
-                text_parts = []
-                for line in result[0]:
-                    if line[1]:  # text and confidence
-                        text_parts.append(line[1][0])
-                
-                return "\n".join(text_parts)
-        
+                lines = [line[1][0] for line in result[0]]
+                return "\n".join(lines)
         except Exception as e:
-            logger.warning(f"OCR failed: {e}")
+            print(f"OCR error: {e}")
         
         return ""
+    
+    def _extract_tables(self, page) -> List[str]:
+        """Extract tables from page and convert to markdown"""
+        tables = []
+        
+        try:
+            # Use PyMuPDF's table finder
+            tabs = page.find_tables()
+            
+            for tab in tabs:
+                df = tab.to_pandas()
+                if not df.empty:
+                    # Convert to markdown table
+                    md = df.to_markdown(index=False)
+                    tables.append(md)
+        except Exception as e:
+            # Table extraction may not be available in all PyMuPDF versions
+            pass
+        
+        return tables
