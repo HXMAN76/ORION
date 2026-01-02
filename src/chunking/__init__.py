@@ -1,4 +1,5 @@
-"""Text chunking utilities"""
-from .chunker import Chunker
+"""Chunking utilities for text processing"""
 
-__all__ = ["Chunker"]
+from .chunker import SemanticChunker
+
+__all__ = ["SemanticChunker"]
