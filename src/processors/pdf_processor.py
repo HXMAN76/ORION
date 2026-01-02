@@ -19,13 +19,13 @@ class PDFProcessor(BaseProcessor):
     def doc_type(self) -> str:
         return "pdf"
     
-    def __init__(self, chunker: Optional[Chunker] = None, use_ocr: bool = True):
+    def __init__(self, chunker: Optional[Chunker] = None, use_ocr: bool = False):
         """
         Initialize PDF processor.
         
         Args:
             chunker: Text chunker instance (uses default if not provided)
-            use_ocr: Whether to use OCR for scanned pages/images
+            use_ocr: Whether to use OCR for scanned pages/images (disabled by default)
         """
         self.chunker = chunker or Chunker()
         self.use_ocr = use_ocr
@@ -36,9 +36,13 @@ class PDFProcessor(BaseProcessor):
         if self._ocr is None and self.use_ocr:
             try:
                 from paddleocr import PaddleOCR
-                self._ocr = PaddleOCR(use_angle_cls=True, lang='en', show_log=False)
+                import logging
+                logging.getLogger('ppocr').setLevel(logging.ERROR)
+                self._ocr = PaddleOCR(use_angle_cls=True, lang='en')
             except ImportError:
                 print("Warning: PaddleOCR not installed, OCR disabled")
+            except Exception as e:
+                print(f"Warning: PaddleOCR failed to initialize: {e}")
         return self._ocr
     
     def process(self, file_path: Path, document_id: Optional[str] = None) -> List[Chunk]:
@@ -115,12 +119,24 @@ class PDFProcessor(BaseProcessor):
             pix = page.get_pixmap(dpi=150)
             img_bytes = pix.tobytes("png")
             
-            # Run OCR
-            result = ocr.ocr(img_bytes, cls=True)
-            
-            if result and result[0]:
-                lines = [line[1][0] for line in result[0]]
-                return "\n".join(lines)
+            # Try new PaddleOCR API first (predict method)
+            if hasattr(ocr, 'predict'):
+                result = ocr.predict(img_bytes)
+                if result and len(result) > 0:
+                    # New API returns list of dicts with 'rec_texts' key
+                    texts = []
+                    for item in result:
+                        if isinstance(item, dict) and 'rec_texts' in item:
+                            texts.extend(item['rec_texts'])
+                        elif isinstance(item, dict) and 'text' in item:
+                            texts.append(item['text'])
+                    return "\n".join(texts) if texts else ""
+            else:
+                # Old API uses .ocr() method
+                result = ocr.ocr(img_bytes)
+                if result and result[0]:
+                    lines = [line[1][0] for line in result[0]]
+                    return "\n".join(lines)
         except Exception as e:
             print(f"OCR error: {e}")
         

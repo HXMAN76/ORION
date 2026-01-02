@@ -18,12 +18,12 @@ class ImageProcessor(BaseProcessor):
     def doc_type(self) -> str:
         return "image"
     
-    def __init__(self, use_ocr: bool = True, use_vision: bool = True):
+    def __init__(self, use_ocr: bool = False, use_vision: bool = True):
         """
         Initialize image processor.
         
         Args:
-            use_ocr: Whether to extract text using OCR
+            use_ocr: Whether to extract text using OCR (disabled by default)
             use_vision: Whether to generate descriptions using vision model
         """
         self.use_ocr = use_ocr
