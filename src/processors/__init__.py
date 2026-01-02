@@ -1,15 +1,5 @@
-"""Document processors for various file types"""
-from .base import BaseProcessor, Chunk
-from .pdf_processor import PDFProcessor
-from .docx_processor import DOCXProcessor
-from .image_processor import ImageProcessor
-from .voice_processor import VoiceProcessor
+"""Document processors for various file formats"""
 
-__all__ = [
-    "BaseProcessor", 
-    "Chunk",
-    "PDFProcessor", 
-    "DOCXProcessor", 
-    "ImageProcessor", 
-    "VoiceProcessor"
-]
+from .base import BaseProcessor, Chunk
+
+__all__ = ["BaseProcessor", "Chunk"]
