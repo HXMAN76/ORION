@@ -4,13 +4,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
-from .routes import ingest, query, manage
+from .routes import ingest, query, manage, diarization
 from ..config import config
 
 # Create FastAPI app
 app = FastAPI(
     title="ORION",
-    description="Offline Multimodal RAG System",
+    description="Offline Multimodal RAG System with Speaker Diarization",
     version="1.0.0"
 )
 
@@ -27,6 +27,7 @@ app.add_middleware(
 app.include_router(ingest.router, prefix="/api", tags=["Ingestion"])
 app.include_router(query.router, prefix="/api", tags=["Query"])
 app.include_router(manage.router, prefix="/api", tags=["Management"])
+app.include_router(diarization.router, prefix="/api/voice", tags=["Speaker Diarization"])
 
 
 @app.get("/")

@@ -8,21 +8,21 @@ A completely **offline** Retrieval-Augmented Generation system that can ingest, 
 - 📄 **Multi-format Support** - PDF, DOCX, Images, Voice recordings
 - 🎯 **Semantic Search** - Find relevant content using natural language
 - 💬 **RAG Chat** - Get AI-powered answers with source citations
-- 🗣️ **Speaker Diarization** - Identify who said what in audio files
+- 🗣️ **Speaker Diarization** - Identify who said what in audio files (with timestamps)
 - 🖼️ **Image Understanding** - OCR + Vision model descriptions
 - 🏷️ **Logical Collections** - Organize documents with flexible metadata tags
 
 ## Tech Stack
 
 | Component | Technology |
-|-----------|-----------|
+|-----------|------------|
 | Vector Store | ChromaDB |
 | Embeddings | nomic-embed-text (Ollama) |
 | LLM | Mistral 7B (Ollama) |
 | Vision | LLaVA (Ollama) |
 | OCR | PaddleOCR |
-| Speech-to-Text | Whisper |
-| Speaker Diarization | Pyannote.audio |
+| Speech-to-Text | Faster-Whisper (local) |
+| Speaker Diarization | MFCC + Spectral Clustering (local) |
 | Backend | FastAPI |
 | Desktop App | Electron + React |
 
@@ -84,6 +84,52 @@ ORION/
 3. Organize with collections using the sidebar
 4. Ask questions in the chat interface
 5. Click citations to see source locations
+
+## Speaker Diarization API
+
+The system includes a dedicated API for speaker diarization:
+
+### Diarize Uploaded Audio
+```bash
+POST /api/voice/diarize/upload
+Content-Type: multipart/form-data
+
+file: <audio file>
+language: en (optional)
+num_speakers: 2 (optional)
+```
+
+### Diarize by File Path
+```bash
+POST /api/voice/diarize
+Content-Type: application/json
+
+{
+    "audio_path": "/path/to/audio.wav",
+    "language": "en",
+    "num_speakers": null
+}
+```
+
+### Response Format
+```json
+{
+    "success": true,
+    "file_name": "meeting.wav",
+    "duration": 151.25,
+    "speaker_count": 2,
+    "speakers": ["Speaker 1", "Speaker 2"],
+    "segments": [
+        {
+            "speaker": "Speaker 1",
+            "start": 5.11,
+            "end": 15.53,
+            "text": "Welcome to the meeting...",
+            "confidence": 1.0
+        }
+    ]
+}
+```
 
 ## License
 
