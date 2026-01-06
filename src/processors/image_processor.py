@@ -1,156 +1,121 @@
-"""Image processor with OCR and vision model descriptions"""
-from pathlib import Path
-from typing import List, Optional
-import base64
+"""
+ORION Image Processor
+Offline OCR → Chunking → JSONL
+"""
 
-from .base import BaseProcessor, Chunk
-from ..config import config
+from pathlib import Path
+from typing import List
+import json
+import subprocess
+from datetime import datetime
+
+from processors.base import BaseProcessor, Chunk
+from config import config
+
+
+TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 
 class ImageProcessor(BaseProcessor):
-    """Process images using OCR and vision model descriptions"""
-    
-    @property
-    def supported_extensions(self) -> List[str]:
-        return [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff"]
-    
+
+    # --------------------------------------------------
+    # REQUIRED ABSTRACT PROPERTIES
+    # --------------------------------------------------
     @property
     def doc_type(self) -> str:
         return "image"
-    
-    def __init__(self, use_ocr: bool = False, use_vision: bool = True):
-        """
-        Initialize image processor.
-        
-        Args:
-            use_ocr: Whether to extract text using OCR (disabled by default)
-            use_vision: Whether to generate descriptions using vision model
-        """
-        self.use_ocr = use_ocr
-        self.use_vision = use_vision
-        self._ocr = None
-        self._ollama = None
-    
-    def _get_ocr(self):
-        """Lazy load OCR engine"""
-        if self._ocr is None and self.use_ocr:
-            try:
-                from paddleocr import PaddleOCR
-                self._ocr = PaddleOCR(use_angle_cls=True, lang='en', show_log=False)
-            except ImportError:
-                print("Warning: PaddleOCR not installed, OCR disabled")
-        return self._ocr
-    
-    def _get_ollama(self):
-        """Lazy load Ollama client"""
-        if self._ollama is None and self.use_vision:
-            try:
-                import ollama
-                self._ollama = ollama
-            except ImportError:
-                print("Warning: Ollama not installed, vision disabled")
-        return self._ollama
-    
-    def process(self, file_path: Path, document_id: Optional[str] = None) -> List[Chunk]:
-        """
-        Process an image file and extract chunks.
-        
-        Args:
-            file_path: Path to the image file
-            document_id: Optional document identifier
-            
-        Returns:
-            List of Chunk objects with OCR text and/or vision description
-        """
-        file_path = Path(file_path)
-        if not file_path.exists():
-            raise FileNotFoundError(f"Image file not found: {file_path}")
-        
-        document_id = document_id or self._generate_document_id(file_path)
-        chunks: List[Chunk] = []
-        
-        # Extract text using OCR
-        if self.use_ocr:
-            ocr_text = self._run_ocr(file_path)
-            if ocr_text.strip():
-                chunks.append(Chunk(
-                    content=ocr_text,
-                    document_id=document_id,
-                    doc_type=self.doc_type,
-                    source_file=str(file_path),
-                    metadata={
-                        "content_type": "ocr_text",
-                        "extraction_method": "paddleocr"
-                    }
-                ))
-        
-        # Generate vision description
-        if self.use_vision:
-            description = self._get_vision_description(file_path)
-            if description:
-                chunks.append(Chunk(
-                    content=f"[Image Description]\n{description}",
-                    document_id=document_id,
-                    doc_type=self.doc_type,
-                    source_file=str(file_path),
-                    metadata={
-                        "content_type": "vision_description",
-                        "model": config.VISION_MODEL
-                    }
-                ))
-        
-        # If nothing extracted, create a placeholder chunk
+
+    @property
+    def supported_extensions(self) -> List[str]:
+        return [".png", ".jpg", ".jpeg", ".bmp", ".webp", ".tiff"]
+
+    # --------------------------------------------------
+    # MAIN PIPELINE
+    # --------------------------------------------------
+    def process(self, file_path: Path) -> List[Chunk]:
+        text = self._ocr_with_tesseract(file_path)
+
+        if not text or not text.strip():
+            return []
+
+        chunks = self._chunk_text(text, file_path)
+
+        # ✅ SAFETY GUARANTEE
         if not chunks:
-            chunks.append(Chunk(
-                content=f"[Image: {file_path.name}]",
-                document_id=document_id,
-                doc_type=self.doc_type,
-                source_file=str(file_path),
-                metadata={"content_type": "placeholder"}
-            ))
-        
+            return []
+
+        self._store_jsonl(chunks)
         return chunks
-    
-    def _run_ocr(self, file_path: Path) -> str:
-        """Run OCR on the image"""
-        ocr = self._get_ocr()
-        if ocr is None:
-            return ""
-        
+
+    # --------------------------------------------------
+    # OCR
+    # --------------------------------------------------
+    def _ocr_with_tesseract(self, image_path: Path) -> str:
         try:
-            result = ocr.ocr(str(file_path), cls=True)
-            
-            if result and result[0]:
-                lines = [line[1][0] for line in result[0]]
-                return "\n".join(lines)
-        except Exception as e:
-            print(f"OCR error: {e}")
-        
-        return ""
-    
-    def _get_vision_description(self, file_path: Path) -> str:
-        """Get image description from vision model"""
-        ollama = self._get_ollama()
-        if ollama is None:
-            return ""
-        
-        try:
-            # Read and encode image
-            with open(file_path, "rb") as f:
-                image_data = base64.b64encode(f.read()).decode()
-            
-            # Call vision model
-            response = ollama.chat(
-                model=config.VISION_MODEL,
-                messages=[{
-                    "role": "user",
-                    "content": "Describe this image in detail. Include any text, objects, people, colors, and relevant information visible.",
-                    "images": [image_data]
-                }]
+            result = subprocess.run(
+                [TESSERACT_PATH, str(image_path), "stdout"],
+                capture_output=True,
+                text=True,
             )
-            
-            return response["message"]["content"]
+            return result.stdout.strip()
         except Exception as e:
-            print(f"Vision model error: {e}")
-        
-        return ""
+            print(f"[ImageProcessor] OCR failed: {e}")
+            return ""
+
+    # --------------------------------------------------
+    # CHUNKING (FIXED + MULTI-CHUNK SAFE)
+    # --------------------------------------------------
+    def _chunk_text(self, text: str, image_path: Path) -> List[Chunk]:
+        words = text.split()
+
+        if not words:
+            return []
+
+        chunk_size = max(50, config.CHUNK_SIZE // 10)   # 🔥 adaptive
+        overlap = min(10, chunk_size // 4)
+
+        chunks: List[Chunk] = []
+        start = 0
+        chunk_id = 0
+
+        while start < len(words):
+            end = min(start + chunk_size, len(words))
+            content = " ".join(words[start:end])
+
+            if content.strip():
+                chunks.append(
+                    Chunk(
+                        content=content,
+                        metadata={
+                            "chunk_id": chunk_id,
+                            "doc_type": self.doc_type,
+                            "source": image_path.name,
+                            "ocr_engine": "tesseract",
+                            "created_at": datetime.utcnow().isoformat(),
+                        },
+                    )
+                )
+                chunk_id += 1
+
+            start += chunk_size - overlap
+
+        return chunks
+
+    # --------------------------------------------------
+    # JSONL STORAGE
+    # --------------------------------------------------
+    def _store_jsonl(self, chunks: List[Chunk]):
+        output_path = config.DATA_DIR / "image_ocr_chunks.jsonl"
+
+        with open(output_path, "a", encoding="utf-8") as f:
+            for chunk in chunks:
+                f.write(
+                    json.dumps(
+                        {
+                            "content": chunk.content,
+                            "metadata": chunk.metadata,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
