@@ -346,28 +346,55 @@ class ChromaStore:
                 )
 
     def delete_collection(self, collection_name: str) -> int:
-        """Delete collection from persistent storage and remove tag from documents"""
+        """
+        Delete collection from persistent storage.
+        - If a document belongs ONLY to this collection, delete the document.
+        - If a document belongs to multiple collections, remove this collection tag.
+        """
         # Remove from persistent storage
         current = self._load_collections()
         if collection_name in current:
             current.remove(collection_name)
             self._save_collections(current)
             
-        # Remove tags from chunks
+        # Get all chunks to scan for the collection tag
         results = self._collection.get(include=["metadatas"])
 
+        ids_to_delete = []
+        ids_to_update = []
+        metadatas_to_update = []
         affected = 0
+
         for chunk_id, metadata in zip(results.get("ids", []), results.get("metadatas", [])):
             current_tags = [
                 c.strip() for c in metadata.get("collections", "").split(",") if c.strip()
             ]
+            
             if collection_name in current_tags:
                 current_tags.remove(collection_name)
-                self._collection.update(
-                    ids=[chunk_id],
-                    metadatas=[{"collections": ",".join(current_tags)}]
-                )
                 affected += 1
+                
+                if not current_tags:
+                    # No collections left -> Delete document/chunk
+                    ids_to_delete.append(chunk_id)
+                else:
+                    # Other collections exist -> Update metadata
+                    ids_to_update.append(chunk_id)
+                    # Create a new metadata dict to avoid modifying the original one in place unexpectedly
+                    # (though parsing it from results creates a copy usually)
+                    new_metadata = metadata.copy()
+                    new_metadata["collections"] = ",".join(current_tags)
+                    metadatas_to_update.append(new_metadata)
+
+        # Execute batch operations
+        if ids_to_delete:
+            self._collection.delete(ids=ids_to_delete)
+            
+        if ids_to_update:
+            self._collection.update(
+                ids=ids_to_update,
+                metadatas=metadatas_to_update
+            )
 
         return affected
 
