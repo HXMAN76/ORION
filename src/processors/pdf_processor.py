@@ -8,6 +8,7 @@ import tempfile
 from .base import BaseProcessor, Chunk
 from ..chunking import Chunker
 from ..ocr import DeepSeekOCR
+from ..config import config
 
 
 class PDFProcessor(BaseProcessor):
@@ -37,13 +38,13 @@ class PDFProcessor(BaseProcessor):
         """Lazy load OCR engine"""
         if self._ocr is None and self.use_ocr:
             try:
-                self._ocr = DeepSeekOCR()
+                self._ocr = DeepSeekOCR(model_name=config.DEEPSEEK_MODEL, host=config.OLLAMA_HOST)
                 if not self._ocr.is_available():
-                    print("Warning: DeepSeek model not found in Ollama, OCR disabled")
+                    print(f"Warning: DeepSeek model '{config.DEEPSEEK_MODEL}' not found in Ollama")
                     print(f"To enable OCR, run: ollama pull {config.DEEPSEEK_MODEL}")
                     self._ocr = None
-            except ImportError:
-                print("Warning: Ollama not installed, OCR disabled")
+            except ImportError as e:
+                print(f"Warning: Ollama not installed: {e}")
                 self._ocr = None
             except Exception as e:
                 print(f"Warning: DeepSeek OCR failed to initialize: {e}")

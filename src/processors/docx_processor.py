@@ -9,6 +9,7 @@ import tempfile
 from .base import BaseProcessor, Chunk
 from ..chunking import Chunker
 from ..ocr import DeepSeekOCR
+from ..config import config
 
 
 class DOCXProcessor(BaseProcessor):
@@ -32,6 +33,7 @@ class DOCXProcessor(BaseProcessor):
         """
         self.chunker = chunker or Chunker()
         self.use_ocr_for_images = use_ocr_for_images
+        self._ocr = None
         self._ocr = None
     
     def process(self, file_path: Path, document_id: Optional[str] = None) -> List[Chunk]:
