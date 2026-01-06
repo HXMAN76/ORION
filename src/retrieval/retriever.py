@@ -1,172 +1,77 @@
-"""
-Semantic retriever for RAG queries
-"""
+from typing import List, Optional
+import ollama
 
-from typing import List, Dict, Any
-
-from ..vectorstore import ChromaStore
-from ..config import config
+from processors.base import Chunk
+from vectorstore import ChromaStore
+from config import config
 
 
 class Retriever:
-    """
-    Retrieve relevant chunks for RAG queries using vector similarity search.
-    """
+    def __init__(self, store: ChromaStore):
+        self.store = store
+        self.embedding_model = config.EMBEDDING_MODEL  # nomic-embed-text
 
-    def __init__(self, store: ChromaStore | None = None):
-        """
-        Initialize retriever.
-
-        Args:
-            store: ChromaStore instance (created if not provided)
-        """
-        self.store = store or ChromaStore()
-
+    # --------------------------------------------------
+    # MAIN RETRIEVE METHOD
+    # --------------------------------------------------
     def retrieve(
         self,
         query: str,
-        top_k: int | None = None,
-        doc_types: List[str] | None = None,
-        collections: List[str] | None = None,
-        min_similarity: float = 0.0
-    ) -> List[Dict[str, Any]]:
-        """
-        Retrieve relevant chunks for a query.
+        top_k: int = 5,
+        doc_types: Optional[List[str]] = None,
+        collections: Optional[List[str]] = None,
+    ) -> List[Chunk]:
 
-        Args:
-            query: Search query
-            top_k: Number of results to retrieve
-            doc_types: Optional document-type filter
-            collections: Optional logical collection filter
-            min_similarity: Minimum similarity threshold (0–1)
-
-        Returns:
-            List of retrieved chunks with metadata and similarity score
-        """
-        if not query or not query.strip():
+        if not query.strip():
             return []
 
-        top_k = top_k or config.TOP_K_RESULTS
+        # ✅ STEP 1: Embed query (ONE STRING)
+        embedding = self._embed_query(query)
 
-        results = self.store.query(
-            query_text=query,
-            n_results=top_k,
-            doc_types=doc_types,
-            collections=collections
-        )
+        results: List[Chunk] = []
 
-        # Defensive: ensure list format
-        if not isinstance(results, list):
-            return []
+        # Default collection
+        if not collections:
+            collections = [config.COLLECTION_NAME]
 
-        # Filter by similarity threshold
-        if min_similarity > 0.0:
-            results = [
-                r for r in results
-                if r.get("similarity") is not None
-                and r["similarity"] >= min_similarity
-            ]
+        # Optional metadata filter
+        where = None
+        if doc_types:
+            where = {"doc_type": {"$in": doc_types}}
+
+        # ✅ STEP 2: Query each collection
+        for collection in collections:
+            response = self.store.query(
+                embedding=embedding,          # ✅ CORRECT PARAM NAME
+                top_k=top_k,
+                collection=collection,
+                where=where,
+            )
+
+            docs = response.get("documents", [[]])[0]
+            metas = response.get("metadatas", [[]])[0]
+            ids = response.get("ids", [[]])[0]
+            dists = response.get("distances", [[]])[0]
+
+            for doc, meta, dist in zip(docs, metas, dists):
+                meta = meta or {}
+                meta["similarity"] = 1 - dist if dist is not None else 0.0
+
+                results.append(
+                    Chunk(
+                        content=doc,
+                        metadata=meta,
+                    )
+                )
 
         return results
 
-    def get_context(
-        self,
-        query: str,
-        top_k: int | None = None,
-        doc_types: List[str] | None = None,
-        collections: List[str] | None = None,
-        max_tokens: int = 2000
-    ) -> str:
-        """
-        Construct formatted context for LLM prompt.
-
-        Args:
-            query: Search query
-            top_k: Number of chunks to retrieve
-            doc_types: Optional document-type filter
-            collections: Optional logical collection filter
-            max_tokens: Maximum tokens allowed in context (soft limit)
-
-        Returns:
-            Formatted context string
-        """
-        results = self.retrieve(
-            query=query,
-            top_k=top_k,
-            doc_types=doc_types,
-            collections=collections
+    # --------------------------------------------------
+    # EMBEDDING (OLLAMA)
+    # --------------------------------------------------
+    def _embed_query(self, text: str) -> List[float]:
+        response = ollama.embeddings(
+            model=self.embedding_model,
+            prompt=text,
         )
-
-        if not results:
-            return ""
-
-        context_parts: List[str] = []
-        token_count = 0
-
-        for i, result in enumerate(results, 1):
-            content = result.get("content", "")
-            if not content:
-                continue
-
-            metadata = result.get("metadata", {})
-
-            # ---- Source formatting ----
-            source_info = f"[Source {i}: {metadata.get('source_file', 'Unknown')}"
-            if metadata.get("page") is not None:
-                source_info += f", Page {metadata['page']}"
-            if metadata.get("speaker"):
-                source_info += f", Speaker: {metadata['speaker']}"
-            if metadata.get("timestamp_start") is not None:
-                source_info += f", Time: {metadata['timestamp_start']:.1f}s"
-            source_info += "]"
-
-            block = f"{source_info}\n{content}"
-
-            # Soft token control (approximate)
-            token_count += len(block.split())
-            if token_count > max_tokens:
-                break
-
-            context_parts.append(block)
-
-        return "\n\n---\n\n".join(context_parts)
-
-    def get_sources(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Extract citation-friendly source metadata from retrieval results.
-
-        Args:
-            results: Retrieval results
-
-        Returns:
-            List of source citation objects
-        """
-        sources: List[Dict[str, Any]] = []
-
-        for i, result in enumerate(results, 1):
-            metadata = result.get("metadata", {})
-
-            source: Dict[str, Any] = {
-                "index": i,
-                "source_file": metadata.get("source_file"),
-                "doc_type": metadata.get("doc_type"),
-                "document_id": metadata.get("document_id"),
-                "similarity": result.get("similarity", 0.0)
-            }
-
-            # Optional location metadata
-            if metadata.get("page") is not None:
-                source["page"] = metadata["page"]
-
-            if metadata.get("timestamp_start") is not None:
-                source["timestamp"] = {
-                    "start": metadata["timestamp_start"],
-                    "end": metadata.get("timestamp_end")
-                }
-
-            if metadata.get("speaker"):
-                source["speaker"] = metadata["speaker"]
-
-            sources.append(source)
-
-        return sources
+        return response["embedding"]
