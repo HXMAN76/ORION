@@ -65,11 +65,9 @@ const useStore = create((set, get) => ({
     isStreaming: false,
 
     // Recent chat sessions for sidebar
-    recentChats: [
-        { id: '1', title: 'Research on Neural Networks', timestamp: new Date() },
-        { id: '2', title: 'Document Analysis Query', timestamp: new Date() },
-        { id: '3', title: 'Image Classification Help', timestamp: new Date() },
-    ],
+    recentChats: [],
+
+    setRecentChats: (chats) => set({ recentChats: chats }),
 
     // Current conversation messages
     messages: [],
@@ -98,16 +96,64 @@ const useStore = create((set, get) => ({
 
     clearMessages: () => set({ messages: [], currentChatId: null }),
 
-    startNewChat: () => {
-        const newChatId = Date.now().toString()
-        set((state) => ({
-            messages: [],
-            currentChatId: newChatId,
-            recentChats: [
-                { id: newChatId, title: 'New Chat', timestamp: new Date() },
-                ...state.recentChats.slice(0, 9) // Keep last 10
-            ]
-        }))
+    // Chat Actions
+    loadRecentChats: async (api) => {
+        try {
+            const sessions = await api.getSessions()
+            set({ recentChats: sessions })
+        } catch (err) {
+            console.error('Failed to load sessions:', err)
+        }
+    },
+
+    loadChatSession: async (api, sessionId) => {
+        try {
+            // Load messages
+            const messages = await api.getSessionMessages(sessionId)
+            set({
+                currentChatId: sessionId,
+                messages: messages.map(m => ({
+                    id: m.id,
+                    role: m.role,
+                    content: m.content,
+                    timestamp: m.created_at,
+                    sources: m.metadata?.sources || []
+                }))
+            })
+        } catch (err) {
+            console.error('Failed to load session:', err)
+        }
+    },
+
+    startNewChat: async (api) => {
+        try {
+            const session = await api.createSession("New Chat")
+            set((state) => ({
+                currentChatId: session.id,
+                messages: [],
+                recentChats: [session, ...state.recentChats]
+            }))
+            return session.id
+        } catch (err) {
+            console.error('Failed to create session:', err)
+            // Fallback for offline mode
+            const tempId = Date.now().toString()
+            set({ currentChatId: tempId, messages: [] })
+            return tempId
+        }
+    },
+
+    deleteChatSession: async (api, sessionId) => {
+        try {
+            await api.deleteSession(sessionId)
+            set(state => ({
+                recentChats: state.recentChats.filter(c => c.id !== sessionId),
+                // If deleting current chat, clear it
+                ...(state.currentChatId === sessionId ? { currentChatId: null, messages: [] } : {})
+            }))
+        } catch (err) {
+            console.error('Failed to delete session:', err)
+        }
     },
 
     // ============================================

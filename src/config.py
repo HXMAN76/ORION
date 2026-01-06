@@ -15,6 +15,7 @@ class Config:
     CHROMA_DIR: Path = field(default_factory=lambda: Path(__file__).parent.parent / "data" / "chroma_db")
     UPLOADS_DIR: Path = field(default_factory=lambda: Path(__file__).parent.parent / "data" / "uploads")
     MODELS_DIR: Path = field(default_factory=lambda: Path(__file__).parent.parent / "models")
+    CHAT_DB_PATH: Path = field(default_factory=lambda: Path(__file__).parent.parent / "data" / "chat_history.db")
     
     # Chunking
     CHUNK_SIZE: int = 512  # tokens

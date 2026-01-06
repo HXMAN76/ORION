@@ -101,6 +101,7 @@ class ApiClient {
                 top_k: options.topK || 5,
                 doc_types: options.docTypes || null,
                 collections: options.collections || null,
+                session_id: options.sessionId || null,
             }),
         })
     }
@@ -122,6 +123,7 @@ class ApiClient {
                 top_k: options.topK || 5,
                 doc_types: options.docTypes || null,
                 collections: options.collections || null,
+                session_id: options.sessionId || null,
             }),
         })
 
@@ -392,6 +394,53 @@ class ApiClient {
 
         return response.json()
     }
+    // ============================================
+    // Chat History Endpoints
+    // ============================================
+
+    /**
+     * Get recent chat sessions
+     */
+    async getSessions(limit = 50) {
+        return this.request(`/api/chat/sessions?limit=${limit}`)
+    }
+
+    /**
+     * Create a new chat session
+     */
+    async createSession(title = "New Chat") {
+        return this.request('/api/chat/sessions', {
+            method: 'POST',
+            body: JSON.stringify({ title }),
+        })
+    }
+
+    /**
+     * Get messages for a session
+     */
+    async getSessionMessages(sessionId) {
+        return this.request(`/api/chat/sessions/${sessionId}/messages`)
+    }
+
+    /**
+     * Delete a chat session
+     */
+    async deleteSession(sessionId) {
+        return this.request(`/api/chat/sessions/${sessionId}`, {
+            method: 'DELETE',
+        })
+    }
+
+    /**
+     * Update session title
+     */
+    async updateSession(sessionId, title) {
+        return this.request(`/api/chat/sessions/${sessionId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ title }),
+        })
+    }
+
 }
 
 // Create and export singleton instance

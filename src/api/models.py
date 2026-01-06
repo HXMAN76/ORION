@@ -12,6 +12,7 @@ class QueryRequest(BaseModel):
     top_k: int = Field(default=5, ge=1, le=20, description="Number of results to retrieve")
     doc_types: Optional[List[str]] = Field(default=None, description="Filter by document types")
     collections: Optional[List[str]] = Field(default=None, description="Filter by collections")
+    session_id: Optional[str] = Field(default=None, description="Persistent session ID")
 
 
 class Source(BaseModel):

@@ -26,13 +26,16 @@ export default function useStreamingResponse() {
         setError(null)
         setStreaming(true)
 
-        // Get current selected collections from store
-        const currentSelectedCollections = useStore.getState().selectedCollections
+        // Get current selected collections and chat ID from store
+        const state = useStore.getState()
+        const currentSelectedCollections = state.selectedCollections
+        const currentChatId = state.currentChatId
 
         // Merge options with selected collections (options take precedence)
         const mergedOptions = {
             ...options,
             collections: options.collections || (currentSelectedCollections.length > 0 ? currentSelectedCollections : null),
+            sessionId: options.sessionId || currentChatId,
         }
 
         // Add user message
@@ -111,13 +114,16 @@ export default function useStreamingResponse() {
         setIsLoading(true)
         setError(null)
 
-        // Get current selected collections from store
-        const currentSelectedCollections = useStore.getState().selectedCollections
+        // Get current selected collections and chat ID from store
+        const state = useStore.getState()
+        const currentSelectedCollections = state.selectedCollections
+        const currentChatId = state.currentChatId
 
         // Merge options with selected collections
         const mergedOptions = {
             ...options,
             collections: options.collections || (currentSelectedCollections.length > 0 ? currentSelectedCollections : null),
+            sessionId: options.sessionId || currentChatId,
         }
 
         addMessage({

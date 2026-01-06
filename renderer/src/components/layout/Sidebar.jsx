@@ -1,5 +1,7 @@
-import { MessageSquare, FolderOpen, Settings, Plus, Clock } from 'lucide-react'
+import { useEffect } from 'react'
+import { MessageSquare, FolderOpen, Settings, Plus, Clock, Trash2 } from 'lucide-react'
 import useStore from '../../store/store'
+import api from '../../services/api'
 
 /**
  * Sidebar - Left navigation panel
@@ -11,8 +13,34 @@ export default function Sidebar() {
         setActiveView,
         recentChats,
         startNewChat,
-        toggleIngestion
+        loadRecentChats,
+        loadChatSession,
+        deleteChatSession,
+        toggleIngestion,
+        currentChatId
     } = useStore()
+
+    // Load chats on mount
+    useEffect(() => {
+        loadRecentChats(api)
+    }, [loadRecentChats])
+
+    const handleNewChat = () => {
+        startNewChat(api)
+        setActiveView('chat')
+    }
+
+    const handleChatSelect = (id) => {
+        loadChatSession(api, id)
+        setActiveView('chat')
+    }
+
+    const handleDeleteChat = (e, id) => {
+        e.stopPropagation()
+        if (confirm('Delete this chat?')) {
+            deleteChatSession(api, id)
+        }
+    }
 
     const navItems = [
         { id: 'chat', label: 'Chat', icon: MessageSquare },
@@ -20,9 +48,11 @@ export default function Sidebar() {
         { id: 'settings', label: 'Settings', icon: Settings },
     ]
 
-    const formatTimeAgo = (date) => {
+    const formatTimeAgo = (dateStr) => {
+        if (!dateStr) return ''
+        const date = new Date(dateStr)
         const now = new Date()
-        const diff = now - new Date(date)
+        const diff = now - date
         const minutes = Math.floor(diff / 60000)
         const hours = Math.floor(diff / 3600000)
         const days = Math.floor(diff / 86400000)
@@ -51,7 +81,7 @@ export default function Sidebar() {
             {/* New Chat Button */}
             <div className="p-4">
                 <button
-                    onClick={startNewChat}
+                    onClick={handleNewChat}
                     className="btn-primary w-full flex items-center justify-center gap-2"
                 >
                     <Plus size={18} />
@@ -71,8 +101,8 @@ export default function Sidebar() {
                                 <button
                                     onClick={() => setActiveView(item.id)}
                                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-fast ${isActive
-                                            ? 'nav-active text-orion-text-primary'
-                                            : 'text-orion-text-secondary hover:text-orion-text-primary hover:bg-orion-bg-hover'
+                                        ? 'nav-active text-orion-text-primary'
+                                        : 'text-orion-text-secondary hover:text-orion-text-primary hover:bg-orion-bg-hover'
                                         }`}
                                 >
                                     <Icon size={20} className={isActive ? 'text-orion-accent' : ''} />
@@ -99,12 +129,24 @@ export default function Sidebar() {
                         {recentChats.map((chat) => (
                             <li key={chat.id}>
                                 <button
-                                    className="w-full text-left px-3 py-2.5 rounded-xl text-sm text-orion-text-secondary hover:text-orion-text-primary hover:bg-orion-bg-hover transition-fast group"
+                                    onClick={() => handleChatSelect(chat.id)}
+                                    className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-fast group flex items-start justifying-between gap-2 ${currentChatId === chat.id
+                                            ? 'bg-orion-bg-hover text-orion-text-primary'
+                                            : 'text-orion-text-secondary hover:text-orion-text-primary hover:bg-orion-bg-hover'
+                                        }`}
                                 >
-                                    <p className="truncate font-medium">{chat.title}</p>
-                                    <p className="text-xs text-orion-text-muted mt-0.5 group-hover:text-orion-text-secondary">
-                                        {formatTimeAgo(chat.timestamp)}
-                                    </p>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="truncate font-medium">{chat.title}</p>
+                                        <p className="text-xs text-orion-text-muted mt-0.5 group-hover:text-orion-text-secondary">
+                                            {formatTimeAgo(chat.updated_at)}
+                                        </p>
+                                    </div>
+                                    <div
+                                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:text-red-400"
+                                        onClick={(e) => handleDeleteChat(e, chat.id)}
+                                    >
+                                        <Trash2 size={14} />
+                                    </div>
                                 </button>
                             </li>
                         ))}

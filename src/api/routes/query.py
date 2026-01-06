@@ -16,6 +16,7 @@ from ...retrieval import Retriever
 from ...generation import LLM, Guardrails, CitationEngine
 from ...vectorstore import ChromaStore
 
+from ...chat_history.db import ChatDB
 
 router = APIRouter()
 
@@ -25,6 +26,7 @@ retriever = Retriever(store)
 llm = LLM()
 guardrails = Guardrails()
 citations = CitationEngine()
+chat_db = ChatDB()
 
 
 @router.post("/query", response_model=QueryResponse)
@@ -34,6 +36,10 @@ async def query_rag(request: QueryRequest):
     
     Returns an answer with source citations.
     """
+    # Save user query if session active
+    if request.session_id:
+        chat_db.add_message(request.session_id, "user", request.query)
+
     # Retrieve relevant chunks
     results = retriever.retrieve(
         query=request.query,
@@ -68,6 +74,18 @@ async def query_rag(request: QueryRequest):
     # Format sources
     formatted_sources = citations.format_sources(sources, cited_only=True, response=answer)
     
+    # Save assistant response if session active
+    if request.session_id:
+        chat_db.add_message(
+            request.session_id, 
+            "assistant", 
+            answer,
+            metadata={
+                "sources": formatted_sources,
+                "confidence": validation["confidence"]
+            }
+        )
+    
     return QueryResponse(
         answer=answer,
         sources=[Source(**s) for s in formatted_sources],
@@ -80,6 +98,10 @@ async def query_rag_stream(request: QueryRequest):
     """
     Ask a question using RAG with streaming response.
     """
+    # Save user query if session active
+    if request.session_id:
+        chat_db.add_message(request.session_id, "user", request.query)
+
     # Retrieve relevant chunks
     results = retriever.retrieve(
         query=request.query,
@@ -96,6 +118,14 @@ async def query_rag_stream(request: QueryRequest):
             }) + "\n"
             yield json.dumps({"type": "sources", "sources": []}) + "\n"
             yield json.dumps({"type": "done"}) + "\n"
+            
+            # Save empty response
+            if request.session_id:
+                chat_db.add_message(
+                    request.session_id,
+                    "assistant",
+                    "I couldn't find any relevant information to answer your question."
+                )
         
         return StreamingResponse(empty_response(), media_type="application/x-ndjson")
     
@@ -103,9 +133,9 @@ async def query_rag_stream(request: QueryRequest):
     context, sources = citations.create_context_with_sources(results)
     
     async def generate():
+        full_response = ""
         try:
             # Stream the response
-            full_response = ""
             for chunk in llm.generate_stream(
                 prompt=f"Context:\n{context}\n\nQuestion: {request.query}\n\nAnswer:",
                 system="""You are a helpful AI assistant that answers questions based on the provided context.
@@ -122,8 +152,19 @@ Rules:
             yield json.dumps({"type": "sources", "sources": formatted_sources}) + "\n"
             yield json.dumps({"type": "done"}) + "\n"
             
+            # Save full response if session active
+            if request.session_id:
+                chat_db.add_message(
+                    request.session_id,
+                    "assistant",
+                    full_response,
+                    metadata={"sources": formatted_sources}
+                )
+            
         except Exception as e:
-            yield json.dumps({"type": "error", "error": str(e)}) + "\n"
+            err_msg = str(e)
+            yield json.dumps({"type": "error", "error": err_msg}) + "\n"
+            # Optional: save error message?
     
     return StreamingResponse(generate(), media_type="application/x-ndjson")
 
