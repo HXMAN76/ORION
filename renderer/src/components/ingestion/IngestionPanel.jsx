@@ -1,231 +1,187 @@
-import { useState, useCallback } from 'react'
-import { Upload, FolderOpen, X, Plus } from 'lucide-react'
+import { useState } from 'react'
+import { X, Loader2, CheckCircle, AlertCircle } from 'lucide-react'
 import useStore from '../../store/store'
-import ipc from '../../services/ipc'
 import api from '../../services/api'
-import IngestionPipeline from './IngestionPipeline'
+import DropZone from './DropZone'
+import FileQueue from './FileQueue'
 
 /**
- * Ingestion Panel - Desktop-native file ingestion flow
- * Drag & drop from OS, file picker via Electron dialog
+ * IngestionPanel - Modal overlay for file upload and processing
+ * Manages the full ingestion workflow
  */
 export default function IngestionPanel() {
     const {
         isIngestionOpen,
-        toggleIngestion,
-        collections,
-        processingQueue,
-        addToQueue,
-        updateQueueItem,
-        removeFromQueue
+        setIngestionOpen,
+        ingestionQueue,
+        clearIngestionQueue,
+        updateIngestionStatus,
+        isIngesting,
+        setIngesting,
+        ingestionProgress,
     } = useStore()
 
-    const [isDragging, setIsDragging] = useState(false)
-    const [selectedCollection, setSelectedCollection] = useState('')
-    const [files, setFiles] = useState([])
-    const [isIngesting, setIsIngesting] = useState(false)
-
-    const handleDragOver = useCallback((e) => {
-        e.preventDefault()
-        setIsDragging(true)
-    }, [])
-
-    const handleDragLeave = useCallback((e) => {
-        e.preventDefault()
-        setIsDragging(false)
-    }, [])
-
-    const handleDrop = useCallback((e) => {
-        e.preventDefault()
-        setIsDragging(false)
-
-        const droppedFiles = Array.from(e.dataTransfer.files)
-        setFiles(prev => [...prev, ...droppedFiles])
-    }, [])
-
-    const handleFileSelect = async () => {
-        // Try Electron dialog first
-        if (ipc.isElectron()) {
-            const result = await ipc.openFileDialog()
-            if (!result.canceled && result.filePaths.length > 0) {
-                // For Electron, we get file paths - create File-like objects
-                const newFiles = result.filePaths.map(path => ({
-                    name: path.split(/[/\\]/).pop(),
-                    path,
-                    isPath: true
-                }))
-                setFiles(prev => [...prev, ...newFiles])
-            }
-        } else {
-            // Browser fallback - use input element
-            const input = document.createElement('input')
-            input.type = 'file'
-            input.multiple = true
-            input.accept = '.pdf,.docx,.doc,.png,.jpg,.jpeg,.webp,.bmp,.mp3,.wav,.m4a,.ogg,.flac'
-            input.onchange = (e) => {
-                const newFiles = Array.from(e.target.files)
-                setFiles(prev => [...prev, ...newFiles])
-            }
-            input.click()
-        }
-    }
-
-    const removeFile = (index) => {
-        setFiles(prev => prev.filter((_, i) => i !== index))
-    }
-
-    const handleIngest = async () => {
-        if (files.length === 0 || isIngesting) return
-
-        setIsIngesting(true)
-        const collectionsToUse = selectedCollection ? [selectedCollection] : []
-
-        // Process files one by one
-        for (const file of files) {
-            const queueId = Date.now() + Math.random()
-
-            addToQueue({
-                id: queueId,
-                file: file.name,
-                collection: selectedCollection
-            })
-
-            try {
-                // Simulate stages for UX
-                updateQueueItem(queueId, { stage: 'reading', progress: 20 })
-
-                // Ingest the file
-                await api.ingest(file, collectionsToUse)
-
-                updateQueueItem(queueId, { stage: 'indexed', progress: 100 })
-
-                // Remove from queue after success
-                setTimeout(() => removeFromQueue(queueId), 2000)
-
-            } catch (error) {
-                updateQueueItem(queueId, {
-                    stage: 'error',
-                    progress: 0,
-                    error: error.message
-                })
-            }
-        }
-
-        setFiles([])
-        setIsIngesting(false)
-    }
+    const [error, setError] = useState(null)
+    const [success, setSuccess] = useState(false)
 
     if (!isIngestionOpen) return null
 
+    const handleClose = () => {
+        if (!isIngesting) {
+            setIngestionOpen(false)
+            setError(null)
+            setSuccess(false)
+        }
+    }
+
+    const handleProcess = async () => {
+        if (ingestionQueue.length === 0) return
+
+        setIngesting(true, 0)
+        setError(null)
+        setSuccess(false)
+
+        try {
+            // Mark all as processing
+            ingestionQueue.forEach((file) => {
+                updateIngestionStatus(file.id, 'processing')
+            })
+
+            // Extract actual File objects
+            const files = ingestionQueue.map((item) => item.file)
+
+            // Upload files
+            const response = await api.ingestFiles(files)
+
+            // Poll for completion if we get a task ID
+            if (response.task_id) {
+                await api.waitForIngestion(response.task_id, (status) => {
+                    setIngesting(true, status.progress || 0)
+                })
+            }
+
+            // Mark all as done
+            ingestionQueue.forEach((file) => {
+                updateIngestionStatus(file.id, 'done')
+            })
+
+            setSuccess(true)
+
+            // Clear queue after delay
+            setTimeout(() => {
+                clearIngestionQueue()
+                setSuccess(false)
+            }, 2000)
+
+        } catch (err) {
+            setError(err.message)
+
+            // Mark all as error
+            ingestionQueue.forEach((file) => {
+                updateIngestionStatus(file.id, 'error')
+            })
+        } finally {
+            setIngesting(false, 0)
+        }
+    }
+
+    const queuedCount = ingestionQueue.filter(f => f.status === 'queued').length
+
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className="w-[600px] max-h-[80vh] bg-orion-bg-secondary rounded-xl border border-orion-border shadow-2xl overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+            {/* Backdrop */}
+            <div
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                onClick={handleClose}
+            />
+
+            {/* Modal */}
+            <div className="relative w-full max-w-2xl mx-4 bg-orion-bg-panel border border-orion-border rounded-3xl shadow-2xl overflow-hidden animate-in">
                 {/* Header */}
-                <header className="flex items-center justify-between px-5 py-4 border-b border-orion-border">
-                    <div className="flex items-center gap-3">
-                        <Upload className="w-5 h-5 text-orion-accent" />
-                        <h2 className="text-lg font-semibold text-orion-text-primary">
-                            Ingest Documents
+                <div className="flex items-center justify-between px-6 py-4 border-b border-orion-border">
+                    <div>
+                        <h2 className="text-xl font-semibold text-orion-text-primary">
+                            Upload Documents
                         </h2>
+                        <p className="text-sm text-orion-text-muted mt-0.5">
+                            Add files to your knowledge base
+                        </p>
                     </div>
                     <button
-                        onClick={toggleIngestion}
-                        className="p-1.5 rounded hover:bg-orion-bg-tertiary transition-fast"
+                        onClick={handleClose}
+                        disabled={isIngesting}
+                        className="btn-icon disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        <X className="w-5 h-5 text-orion-text-muted" />
+                        <X size={20} />
                     </button>
-                </header>
+                </div>
 
                 {/* Content */}
-                <div className="p-5 space-y-4 overflow-y-auto max-h-[60vh] scrollbar-thin">
-                    {/* Collection Selector */}
-                    <div>
-                        <label className="block text-sm text-orion-text-secondary mb-2">
-                            Target Collection (optional)
-                        </label>
-                        <select
-                            value={selectedCollection}
-                            onChange={(e) => setSelectedCollection(e.target.value)}
-                            className="w-full px-3 py-2 bg-orion-bg-tertiary border border-orion-border rounded-lg text-sm text-orion-text-primary outline-none focus:border-orion-accent transition-fast"
-                        >
-                            <option value="">No Collection</option>
-                            {collections.map(coll => (
-                                <option key={coll.id} value={coll.id}>
-                                    {coll.name}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
+                <div className="p-6 space-y-6">
                     {/* Drop Zone */}
-                    <div
-                        onDragOver={handleDragOver}
-                        onDragLeave={handleDragLeave}
-                        onDrop={handleDrop}
-                        onClick={handleFileSelect}
-                        className={`flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-xl cursor-pointer transition-fast
-              ${isDragging
-                                ? 'border-orion-accent bg-orion-accent/10'
-                                : 'border-orion-border hover:border-orion-text-muted'
-                            }`}
-                    >
-                        <FolderOpen className="w-10 h-10 text-orion-text-muted mb-3" />
-                        <p className="text-sm text-orion-text-secondary mb-1">
-                            Drop files here or click to browse
-                        </p>
-                        <p className="mono text-xs text-orion-text-muted">
-                            PDF, DOCX, Images, Audio files
-                        </p>
-                    </div>
+                    <DropZone />
 
-                    {/* Selected Files */}
-                    {files.length > 0 && (
-                        <div className="space-y-2">
-                            <p className="text-sm text-orion-text-secondary">
-                                Selected files ({files.length})
-                            </p>
-                            {files.map((file, index) => (
-                                <div
-                                    key={index}
-                                    className="flex items-center gap-3 px-3 py-2 bg-orion-bg-tertiary rounded-lg"
-                                >
-                                    <span className="flex-1 text-sm text-orion-text-primary truncate">
-                                        {file.name}
-                                    </span>
-                                    <button
-                                        onClick={() => removeFile(index)}
-                                        className="p-1 rounded hover:bg-orion-bg-elevated transition-fast"
-                                    >
-                                        <X className="w-4 h-4 text-orion-text-muted" />
-                                    </button>
-                                </div>
-                            ))}
+                    {/* File Queue */}
+                    <FileQueue />
+
+                    {/* Error Message */}
+                    {error && (
+                        <div className="flex items-center gap-3 p-4 rounded-2xl bg-orion-error/10 border border-orion-error/20">
+                            <AlertCircle size={20} className="text-orion-error flex-shrink-0" />
+                            <p className="text-sm text-orion-error">{error}</p>
                         </div>
                     )}
 
-                    {/* Processing Queue */}
-                    {processingQueue.length > 0 && (
-                        <IngestionPipeline queue={processingQueue} />
+                    {/* Success Message */}
+                    {success && (
+                        <div className="flex items-center gap-3 p-4 rounded-2xl bg-orion-success/10 border border-orion-success/20">
+                            <CheckCircle size={20} className="text-orion-success flex-shrink-0" />
+                            <p className="text-sm text-orion-success">Files processed successfully!</p>
+                        </div>
+                    )}
+
+                    {/* Progress Bar */}
+                    {isIngesting && (
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between text-sm">
+                                <span className="text-orion-text-secondary">Processing files...</span>
+                                <span className="text-orion-accent font-medium">{Math.round(ingestionProgress)}%</span>
+                            </div>
+                            <div className="h-2 bg-orion-bg-elevated rounded-full overflow-hidden">
+                                <div
+                                    className="h-full bg-orion-accent rounded-full transition-all duration-300"
+                                    style={{ width: `${ingestionProgress}%` }}
+                                />
+                            </div>
+                        </div>
                     )}
                 </div>
 
                 {/* Footer */}
-                <footer className="flex items-center justify-end gap-3 px-5 py-4 border-t border-orion-border bg-orion-bg-tertiary/50">
+                <div className="flex items-center justify-between px-6 py-4 border-t border-orion-border bg-orion-bg-card/50">
                     <button
-                        onClick={toggleIngestion}
-                        className="px-4 py-2 text-sm font-medium text-orion-text-secondary rounded-lg hover:bg-orion-bg-tertiary transition-fast"
+                        onClick={() => clearIngestionQueue()}
+                        disabled={isIngesting || ingestionQueue.length === 0}
+                        className="btn-ghost disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        Cancel
+                        Clear Queue
                     </button>
+
                     <button
-                        onClick={handleIngest}
-                        disabled={files.length === 0 || isIngesting}
-                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-orion-accent rounded-lg hover:bg-orion-accent-light disabled:opacity-50 disabled:cursor-not-allowed transition-fast"
+                        onClick={handleProcess}
+                        disabled={isIngesting || queuedCount === 0}
+                        className="btn-primary min-w-[140px] flex items-center justify-center gap-2"
                     >
-                        <Plus className="w-4 h-4" />
-                        {isIngesting ? 'Ingesting...' : `Ingest ${files.length > 0 ? `(${files.length})` : ''}`}
+                        {isIngesting ? (
+                            <>
+                                <Loader2 size={18} className="animate-spin" />
+                                <span>Processing...</span>
+                            </>
+                        ) : (
+                            <span>Process {queuedCount > 0 ? `${queuedCount} File${queuedCount > 1 ? 's' : ''}` : 'Files'}</span>
+                        )}
                     </button>
-                </footer>
+                </div>
             </div>
         </div>
     )
