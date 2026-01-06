@@ -3,11 +3,9 @@ from pathlib import Path
 from typing import List, Optional
 import fitz  # PyMuPDF
 import io
-import tempfile
 
 from .base import BaseProcessor, Chunk
 from ..chunking import Chunker
-from ..ocr import DeepSeekOCR
 
 
 class PDFProcessor(BaseProcessor):
@@ -21,13 +19,13 @@ class PDFProcessor(BaseProcessor):
     def doc_type(self) -> str:
         return "pdf"
     
-    def __init__(self, chunker: Optional[Chunker] = None, use_ocr: bool = True):
+    def __init__(self, chunker: Optional[Chunker] = None, use_ocr: bool = False):
         """
         Initialize PDF processor.
         
         Args:
             chunker: Text chunker instance (uses default if not provided)
-            use_ocr: Whether to use OCR for scanned pages/images (enabled by default)
+            use_ocr: Whether to use OCR for scanned pages/images (disabled by default)
         """
         self.chunker = chunker or Chunker()
         self.use_ocr = use_ocr
@@ -37,17 +35,14 @@ class PDFProcessor(BaseProcessor):
         """Lazy load OCR engine"""
         if self._ocr is None and self.use_ocr:
             try:
-                self._ocr = DeepSeekOCR()
-                if not self._ocr.is_available():
-                    print("Warning: DeepSeek model not found in Ollama, OCR disabled")
-                    print("To enable OCR, run: ollama pull deepseek-vl")
-                    self._ocr = None
+                from paddleocr import PaddleOCR
+                import logging
+                logging.getLogger('ppocr').setLevel(logging.ERROR)
+                self._ocr = PaddleOCR(use_angle_cls=True, lang='en')
             except ImportError:
-                print("Warning: Ollama not installed, OCR disabled")
-                self._ocr = None
+                print("Warning: PaddleOCR not installed, OCR disabled")
             except Exception as e:
-                print(f"Warning: DeepSeek OCR failed to initialize: {e}")
-                self._ocr = None
+                print(f"Warning: PaddleOCR failed to initialize: {e}")
         return self._ocr
     
     def process(self, file_path: Path, document_id: Optional[str] = None) -> List[Chunk]:
@@ -73,11 +68,10 @@ class PDFProcessor(BaseProcessor):
         for page_num, page in enumerate(doc, start=1):
             # Extract text
             text = page.get_text("text")
-            ocr_tables = []
             
             # If no text found, try OCR
             if not text.strip() and self.use_ocr:
-                text, ocr_tables = self._ocr_page(page)
+                text = self._ocr_page(page)
             
             if text.strip():
                 # Chunk the text
@@ -92,25 +86,9 @@ class PDFProcessor(BaseProcessor):
                         page=page_num,
                         metadata={
                             "chunk_index": idx,
-                            "total_chunks_in_page": len(text_chunks),
-                            "extraction_method": "ocr" if not page.get_text("text").strip() else "native"
+                            "total_chunks_in_page": len(text_chunks)
                         }
                     ))
-            
-            # Add OCR-extracted tables
-            for table_idx, table_md in enumerate(ocr_tables):
-                chunks.append(Chunk(
-                    content=table_md,
-                    document_id=document_id,
-                    doc_type=self.doc_type,
-                    source_file=str(file_path),
-                    page=page_num,
-                    metadata={
-                        "content_type": "table",
-                        "table_index": table_idx,
-                        "extraction_method": "deepseek_ocr"
-                    }
-                ))
             
             # Extract tables as markdown
             tables = self._extract_tables(page)
@@ -130,36 +108,39 @@ class PDFProcessor(BaseProcessor):
         doc.close()
         return chunks
     
-    def _ocr_page(self, page) -> tuple[str, List[str]]:
-        """Run OCR on a page and extract both text and tables"""
+    def _ocr_page(self, page) -> str:
+        """Run OCR on a page"""
         ocr = self._get_ocr()
         if ocr is None:
-            return "", []
+            return ""
         
         try:
-            # Render page to temporary image file
-            pix = page.get_pixmap(dpi=200)  # Higher DPI for better OCR
+            # Render page to image
+            pix = page.get_pixmap(dpi=150)
+            img_bytes = pix.tobytes("png")
             
-            # Save to temporary file for DeepSeek
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                tmp_path = Path(tmp.name)
-                pix.save(str(tmp_path))
-            
-            try:
-                # Extract full content (text + tables)
-                content = ocr.extract_full_content(tmp_path)
-                text = content.get("text", "")
-                tables = content.get("tables", [])
-                
-                return text, tables
-            finally:
-                # Clean up temporary file
-                if tmp_path.exists():
-                    tmp_path.unlink()
-        
+            # Try new PaddleOCR API first (predict method)
+            if hasattr(ocr, 'predict'):
+                result = ocr.predict(img_bytes)
+                if result and len(result) > 0:
+                    # New API returns list of dicts with 'rec_texts' key
+                    texts = []
+                    for item in result:
+                        if isinstance(item, dict) and 'rec_texts' in item:
+                            texts.extend(item['rec_texts'])
+                        elif isinstance(item, dict) and 'text' in item:
+                            texts.append(item['text'])
+                    return "\n".join(texts) if texts else ""
+            else:
+                # Old API uses .ocr() method
+                result = ocr.ocr(img_bytes)
+                if result and result[0]:
+                    lines = [line[1][0] for line in result[0]]
+                    return "\n".join(lines)
         except Exception as e:
             print(f"OCR error: {e}")
-            return "", []
+        
+        return ""
     
     def _extract_tables(self, page) -> List[str]:
         """Extract tables from page and convert to markdown"""

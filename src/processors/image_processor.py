@@ -1,11 +1,10 @@
 """Image processor with OCR and vision model descriptions"""
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import List, Optional
 import base64
 
 from .base import BaseProcessor, Chunk
 from ..config import config
-from ..ocr import DeepSeekOCR
 
 
 class ImageProcessor(BaseProcessor):
@@ -19,12 +18,12 @@ class ImageProcessor(BaseProcessor):
     def doc_type(self) -> str:
         return "image"
     
-    def __init__(self, use_ocr: bool = True, use_vision: bool = True):
+    def __init__(self, use_ocr: bool = False, use_vision: bool = True):
         """
         Initialize image processor.
         
         Args:
-            use_ocr: Whether to extract text using OCR (enabled by default)
+            use_ocr: Whether to extract text using OCR (disabled by default)
             use_vision: Whether to generate descriptions using vision model
         """
         self.use_ocr = use_ocr
@@ -36,14 +35,10 @@ class ImageProcessor(BaseProcessor):
         """Lazy load OCR engine"""
         if self._ocr is None and self.use_ocr:
             try:
-                self._ocr = DeepSeekOCR()
-                if not self._ocr.is_available():
-                    print("Warning: DeepSeek model not found in Ollama, OCR disabled")
-                    print("To enable OCR, run: ollama pull deepseek-vl")
-                    self._ocr = None
+                from paddleocr import PaddleOCR
+                self._ocr = PaddleOCR(use_angle_cls=True, lang='en', show_log=False)
             except ImportError:
-                print("Warning: Ollama not installed, OCR disabled")
-                self._ocr = None
+                print("Warning: PaddleOCR not installed, OCR disabled")
         return self._ocr
     
     def _get_ollama(self):
@@ -76,32 +71,16 @@ class ImageProcessor(BaseProcessor):
         
         # Extract text using OCR
         if self.use_ocr:
-            ocr_result = self._run_ocr(file_path)
-            
-            # Add OCR text if available
-            if ocr_result["text"].strip():
+            ocr_text = self._run_ocr(file_path)
+            if ocr_text.strip():
                 chunks.append(Chunk(
-                    content=ocr_result["text"],
+                    content=ocr_text,
                     document_id=document_id,
                     doc_type=self.doc_type,
                     source_file=str(file_path),
                     metadata={
                         "content_type": "ocr_text",
-                        "extraction_method": "deepseek"
-                    }
-                ))
-            
-            # Add OCR tables if available
-            for table_idx, table_md in enumerate(ocr_result["tables"]):
-                chunks.append(Chunk(
-                    content=table_md,
-                    document_id=document_id,
-                    doc_type=self.doc_type,
-                    source_file=str(file_path),
-                    metadata={
-                        "content_type": "table",
-                        "table_index": table_idx,
-                        "extraction_method": "deepseek"
+                        "extraction_method": "paddleocr"
                     }
                 ))
         
@@ -132,22 +111,22 @@ class ImageProcessor(BaseProcessor):
         
         return chunks
     
-    def _run_ocr(self, file_path: Path) -> Dict[str, any]:
-        """Run OCR on the image and extract text and tables"""
+    def _run_ocr(self, file_path: Path) -> str:
+        """Run OCR on the image"""
         ocr = self._get_ocr()
         if ocr is None:
-            return {"text": "", "tables": []}
+            return ""
         
         try:
-            # Use DeepSeek OCR for comprehensive extraction
-            content = ocr.extract_full_content(file_path)
-            return {
-                "text": content.get("text", ""),
-                "tables": content.get("tables", [])
-            }
+            result = ocr.ocr(str(file_path), cls=True)
+            
+            if result and result[0]:
+                lines = [line[1][0] for line in result[0]]
+                return "\n".join(lines)
         except Exception as e:
             print(f"OCR error: {e}")
-            return {"text": "", "tables": []}
+        
+        return ""
     
     def _get_vision_description(self, file_path: Path) -> str:
         """Get image description from vision model"""
