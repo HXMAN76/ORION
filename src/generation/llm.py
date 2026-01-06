@@ -2,7 +2,7 @@
 from typing import Optional, Generator, Dict, Any, List
 from dataclasses import dataclass
 
-from ..config import config
+from config import config
 
 
 @dataclass
@@ -190,24 +190,10 @@ Answer:"""
         try:
             client = self._get_client()
             # Try to list models
-            response = client.list()
-            
-            # ollama.list() returns ListResponse with .models attribute
-            # Each model has .model attribute (not .name)
-            models = getattr(response, 'models', [])
-            
-            # Extract model names
-            model_names = []
-            for m in models:
-                # Model object has .model attribute
-                name = getattr(m, 'model', '') or getattr(m, 'name', '')
-                if name:
-                    model_names.append(name.lower())
+            models = client.list()
+            model_names = [m["name"] for m in models.get("models", [])]
             
             # Check if our model is available
-            target = self.model.lower()
-            return target in model_names or any(target in name for name in model_names)
-            
-        except Exception as e:
-            print(f"Model check error: {e}")
+            return any(self.model in name for name in model_names)
+        except Exception:
             return False
