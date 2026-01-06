@@ -5,8 +5,8 @@ from docx import Document
 from docx.table import Table
 import io
 
-from .base import BaseProcessor, Chunk
-from ..chunking import Chunker
+from processors.base import BaseProcessor, Chunk
+from chunking import Chunker
 
 
 class DOCXProcessor(BaseProcessor):
