@@ -6,6 +6,7 @@ import io
 
 from .base import BaseProcessor, Chunk
 from ..chunking import Chunker
+from ..config import config
 
 
 class PDFProcessor(BaseProcessor):
@@ -19,13 +20,13 @@ class PDFProcessor(BaseProcessor):
     def doc_type(self) -> str:
         return "pdf"
     
-    def __init__(self, chunker: Optional[Chunker] = None, use_ocr: bool = False):
+    def __init__(self, chunker: Optional[Chunker] = None, use_ocr: bool = True):
         """
         Initialize PDF processor.
         
         Args:
             chunker: Text chunker instance (uses default if not provided)
-            use_ocr: Whether to use OCR for scanned pages/images (disabled by default)
+            use_ocr: Whether to use OCR for scanned pages/images (enabled by default)
         """
         self.chunker = chunker or Chunker()
         self.use_ocr = use_ocr
@@ -35,14 +36,21 @@ class PDFProcessor(BaseProcessor):
         """Lazy load OCR engine"""
         if self._ocr is None and self.use_ocr:
             try:
-                from paddleocr import PaddleOCR
-                import logging
-                logging.getLogger('ppocr').setLevel(logging.ERROR)
-                self._ocr = PaddleOCR(use_angle_cls=True, lang='en')
-            except ImportError:
-                print("Warning: PaddleOCR not installed, OCR disabled")
+                from ..ocr import DeepSeekOCR
+                self._ocr = DeepSeekOCR(
+                    model_name=config.DEEPSEEK_MODEL,
+                    host=config.OLLAMA_HOST
+                )
+                if not self._ocr.is_available():
+                    print(f"Warning: DeepSeek model '{config.DEEPSEEK_MODEL}' not found in Ollama")
+                    print(f"To enable OCR, run: ollama pull {config.DEEPSEEK_MODEL}")
+                    self._ocr = None
+            except ImportError as e:
+                print(f"Warning: OCR module not available: {e}")
+                self._ocr = None
             except Exception as e:
-                print(f"Warning: PaddleOCR failed to initialize: {e}")
+                print(f"Warning: DeepSeek OCR failed to initialize: {e}")
+                self._ocr = None
         return self._ocr
     
     def process(self, file_path: Path, document_id: Optional[str] = None) -> List[Chunk]:
@@ -109,38 +117,34 @@ class PDFProcessor(BaseProcessor):
         return chunks
     
     def _ocr_page(self, page) -> str:
-        """Run OCR on a page"""
+        """Run OCR on a page using DeepSeek"""
         ocr = self._get_ocr()
         if ocr is None:
             return ""
         
         try:
-            # Render page to image
-            pix = page.get_pixmap(dpi=150)
-            img_bytes = pix.tobytes("png")
+            import tempfile
             
-            # Try new PaddleOCR API first (predict method)
-            if hasattr(ocr, 'predict'):
-                result = ocr.predict(img_bytes)
-                if result and len(result) > 0:
-                    # New API returns list of dicts with 'rec_texts' key
-                    texts = []
-                    for item in result:
-                        if isinstance(item, dict) and 'rec_texts' in item:
-                            texts.extend(item['rec_texts'])
-                        elif isinstance(item, dict) and 'text' in item:
-                            texts.append(item['text'])
-                    return "\n".join(texts) if texts else ""
-            else:
-                # Old API uses .ocr() method
-                result = ocr.ocr(img_bytes)
-                if result and result[0]:
-                    lines = [line[1][0] for line in result[0]]
-                    return "\n".join(lines)
+            # Render page to image at high DPI for better OCR
+            pix = page.get_pixmap(dpi=200)
+            
+            # Save to temporary file (DeepSeek OCR needs file path)
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                tmp_path = Path(tmp.name)
+                pix.save(str(tmp_path))
+            
+            try:
+                # Use DeepSeek OCR to extract text
+                text = ocr.extract_text(tmp_path)
+                return text
+            finally:
+                # Clean up temporary file
+                if tmp_path.exists():
+                    tmp_path.unlink()
+        
         except Exception as e:
             print(f"OCR error: {e}")
-        
-        return ""
+            return ""
     
     def _extract_tables(self, page) -> List[str]:
         """Extract tables from page and convert to markdown"""
