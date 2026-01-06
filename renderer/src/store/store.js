@@ -51,6 +51,9 @@ const useStore = create((set, get) => ({
     collections: [],
     setCollections: (collections) => set({ collections }),
 
+    activeCollection: 'all', // Current collection context for viewing/uploading
+    setActiveCollection: (collection) => set({ activeCollection: collection }),
+
     documents: [],
     setDocuments: (documents) => set({ documents }),
 

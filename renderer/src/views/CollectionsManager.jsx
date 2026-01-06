@@ -23,10 +23,15 @@ import api from '../services/api'
  * Displays ingested documents with search, filter, and CRUD operations
  */
 export default function CollectionsManager() {
-    const { documents, setDocuments, collections, setCollections, toggleIngestion } = useStore()
+    const {
+        documents, setDocuments,
+        collections, setCollections,
+        toggleIngestion,
+        activeCollection, setActiveCollection
+    } = useStore()
     const [viewMode, setViewMode] = useState('grid') // 'grid' | 'list'
     const [searchQuery, setSearchQuery] = useState('')
-    const [selectedCollection, setSelectedCollection] = useState('all')
+    // const [selectedCollection, setSelectedCollection] = useState('all') // Use global state instead
     const [isLoading, setIsLoading] = useState(false)
     const [deletingId, setDeletingId] = useState(null)
     const [showNewCollectionModal, setShowNewCollectionModal] = useState(false)
@@ -70,8 +75,8 @@ export default function CollectionsManager() {
     // Filter documents
     const filteredDocuments = documents.filter((doc) => {
         const matchesSearch = doc.name?.toLowerCase().includes(searchQuery.toLowerCase())
-        const matchesCollection = selectedCollection === 'all' ||
-            (doc.collections && doc.collections.includes(selectedCollection))
+        const matchesCollection = activeCollection === 'all' ||
+            (doc.collections && doc.collections.includes(activeCollection))
         return matchesSearch && matchesCollection
     })
 
@@ -125,8 +130,8 @@ export default function CollectionsManager() {
             // Refresh collections
             const updatedCollections = await api.getCollections()
             setCollections(updatedCollections || [])
-            if (selectedCollection === collectionName) {
-                setSelectedCollection('all')
+            if (activeCollection === collectionName) {
+                setActiveCollection('all')
             }
         } catch (err) {
             console.error('Failed to delete collection:', err)
@@ -215,8 +220,8 @@ export default function CollectionsManager() {
                     {/* Collection Filter */}
                     <div className="flex items-center gap-2">
                         <select
-                            value={selectedCollection}
-                            onChange={(e) => setSelectedCollection(e.target.value)}
+                            value={activeCollection}
+                            onChange={(e) => setActiveCollection(e.target.value)}
                             className="input w-auto min-w-[160px]"
                         >
                             <option value="all">All Collections</option>
@@ -224,9 +229,9 @@ export default function CollectionsManager() {
                                 <option key={col} value={col}>{col}</option>
                             ))}
                         </select>
-                        {selectedCollection !== 'all' && (
+                        {activeCollection !== 'all' && (
                             <button
-                                onClick={() => handleDeleteCollection(selectedCollection)}
+                                onClick={() => handleDeleteCollection(activeCollection)}
                                 className="btn-icon hover:text-orion-error"
                                 title="Delete collection"
                             >

@@ -21,6 +21,7 @@ export default function IngestionPanel() {
         ingestionProgress,
         setDocuments,
         documents,
+        activeCollection
     } = useStore()
 
     const [error, setError] = useState(null)
@@ -58,7 +59,8 @@ export default function IngestionPanel() {
                 setIngesting(true, 50)
 
                 try {
-                    const response = await api.ingestFile(item.file)
+                    const collections = (activeCollection && activeCollection !== 'all') ? [activeCollection] : []
+                    const response = await api.ingestFile(item.file, collections)
                     updateIngestionStatus(item.id, 'done')
                     setProcessedCount(1)
 
@@ -87,8 +89,9 @@ export default function IngestionPanel() {
 
                 // Extract actual File objects
                 const fileObjects = files.map((item) => item.file)
+                const collections = (activeCollection && activeCollection !== 'all') ? [activeCollection] : []
 
-                const response = await api.ingestFiles(fileObjects)
+                const response = await api.ingestFiles(fileObjects, collections)
 
                 // Update statuses based on response
                 let successCount = 0
@@ -108,7 +111,7 @@ export default function IngestionPanel() {
                                 source_file: result.file,
                                 doc_type: result.file.split('.').pop(),
                                 chunks: result.chunks,
-                                collections: [],
+                                collections: collections,
                                 created_at: new Date().toISOString(),
                             }
                             setDocuments(prev => [...prev, newDoc])

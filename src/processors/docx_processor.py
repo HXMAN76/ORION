@@ -9,6 +9,7 @@ try:
     from docx.table import Table
 except ImportError:
     Document = None
+    Table = None
 
 from .base import BaseProcessor, Chunk
 from ..chunking import Chunker
