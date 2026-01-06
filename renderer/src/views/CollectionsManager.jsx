@@ -87,8 +87,8 @@ export default function CollectionsManager() {
     const filteredDocuments = docsList.filter((doc) => {
         const fileName = getFileName(doc.name)
         const matchesSearch = fileName?.toLowerCase().includes(searchQuery.toLowerCase())
-        const matchesCollection = selectedCollection === 'all' ||
-            (doc.collections && doc.collections.includes(selectedCollection))
+        const matchesCollection = activeCollection === 'all' ||
+            (doc.collections && doc.collections.includes(activeCollection))
         return matchesSearch && matchesCollection
     })
 
