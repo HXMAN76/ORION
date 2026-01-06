@@ -4,9 +4,11 @@ from typing import List, Optional
 from docx import Document
 from docx.table import Table
 import io
+import tempfile
 
 from .base import BaseProcessor, Chunk
 from ..chunking import Chunker
+from ..ocr import DeepSeekOCR
 
 
 class DOCXProcessor(BaseProcessor):
@@ -20,14 +22,17 @@ class DOCXProcessor(BaseProcessor):
     def doc_type(self) -> str:
         return "docx"
     
-    def __init__(self, chunker: Optional[Chunker] = None):
+    def __init__(self, chunker: Optional[Chunker] = None, use_ocr_for_images: bool = True):
         """
         Initialize DOCX processor.
         
         Args:
             chunker: Text chunker instance (uses default if not provided)
+            use_ocr_for_images: Whether to OCR embedded images (enabled by default)
         """
         self.chunker = chunker or Chunker()
+        self.use_ocr_for_images = use_ocr_for_images
+        self._ocr = None
     
     def process(self, file_path: Path, document_id: Optional[str] = None) -> List[Chunk]:
         """
@@ -95,6 +100,97 @@ class DOCXProcessor(BaseProcessor):
                         "table_index": table_idx
                     }
                 ))
+        
+        # Extract embedded images and run OCR
+        if self.use_ocr_for_images:
+            image_chunks = self._extract_embedded_images(file_path, doc, document_id)
+            chunks.extend(image_chunks)
+        
+        return chunks
+    
+    def _get_ocr(self):
+        """Lazy load OCR engine"""
+        if self._ocr is None and self.use_ocr_for_images:
+            try:
+                self._ocr = DeepSeekOCR()
+                if not self._ocr.is_available():
+                    print("Warning: DeepSeek model not found in Ollama, image OCR disabled")
+                    print("To enable image OCR, run: ollama pull deepseek-vl")
+                    self._ocr = None
+            except Exception as e:
+                print(f"Warning: DeepSeek OCR failed to initialize: {e}")
+                self._ocr = None
+        return self._ocr
+    
+    def _extract_embedded_images(
+        self, 
+        file_path: Path, 
+        doc: Document, 
+        document_id: str
+    ) -> List[Chunk]:
+        """Extract and OCR embedded images from DOCX"""
+        chunks: List[Chunk] = []
+        ocr = self._get_ocr()
+        
+        if ocr is None:
+            return chunks
+        
+        try:
+            # Extract images from document relationships
+            for rel_id, rel in doc.part.rels.items():
+                if "image" in rel.target_ref:
+                    try:
+                        # Get image binary data
+                        image_data = rel.target_part.blob
+                        
+                        # Save to temporary file
+                        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                            tmp_path = Path(tmp.name)
+                            tmp.write(image_data)
+                        
+                        try:
+                            # Run OCR on the image
+                            content = ocr.extract_full_content(tmp_path)
+                            
+                            # Add text chunk if available
+                            if content.get("text", "").strip():
+                                chunks.append(Chunk(
+                                    content=f"[Embedded Image Text]\n{content['text']}",
+                                    document_id=document_id,
+                                    doc_type=self.doc_type,
+                                    source_file=str(file_path),
+                                    metadata={
+                                        "content_type": "embedded_image_text",
+                                        "extraction_method": "deepseek",
+                                        "image_rel_id": rel_id
+                                    }
+                                ))
+                            
+                            # Add table chunks if available
+                            for table_idx, table_md in enumerate(content.get("tables", [])):
+                                chunks.append(Chunk(
+                                    content=table_md,
+                                    document_id=document_id,
+                                    doc_type=self.doc_type,
+                                    source_file=str(file_path),
+                                    metadata={
+                                        "content_type": "embedded_image_table",
+                                        "table_index": table_idx,
+                                        "extraction_method": "deepseek",
+                                        "image_rel_id": rel_id
+                                    }
+                                ))
+                        finally:
+                            # Clean up temporary file
+                            if tmp_path.exists():
+                                tmp_path.unlink()
+                    
+                    except Exception as e:
+                        print(f"Failed to process embedded image {rel_id}: {e}")
+                        continue
+        
+        except Exception as e:
+            print(f"Failed to extract embedded images: {e}")
         
         return chunks
     
