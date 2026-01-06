@@ -6,7 +6,7 @@ import shutil
 
 from ..models import IngestRequest, IngestResponse
 from ...config import config
-from ...processors import PDFProcessor, DOCXProcessor, ImageProcessor, VoiceProcessor
+from ...processors import PDFProcessor, DOCXProcessor, CSVProcessor, ImageProcessor, VoiceProcessor
 from ...vectorstore import ChromaStore
 
 
@@ -20,6 +20,8 @@ PROCESSORS = {
     ".pdf": PDFProcessor(),
     ".docx": DOCXProcessor(),
     ".doc": DOCXProcessor(),
+    ".csv": CSVProcessor(),
+    ".tsv": CSVProcessor(),
     ".png": ImageProcessor(),
     ".jpg": ImageProcessor(),
     ".jpeg": ImageProcessor(),
@@ -160,7 +162,7 @@ async def get_supported_types():
     return {
         "extensions": list(PROCESSORS.keys()),
         "types": {
-            "documents": [".pdf", ".docx", ".doc"],
+            "documents": [".pdf", ".docx", ".doc", ".csv", ".tsv"],
             "images": [".png", ".jpg", ".jpeg", ".webp", ".bmp"],
             "audio": [".mp3", ".wav", ".m4a", ".ogg", ".flac"]
         }

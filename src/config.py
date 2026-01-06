@@ -25,6 +25,7 @@ class Config:
     EMBEDDING_MODEL: str = "nomic-embed-text"
     LLM_MODEL: str = "mistral:7b"
     VISION_MODEL: str = "llava"
+    DEEPSEEK_MODEL: str = "deepseek-ocr"  # DeepSeek OCR model
     
     # Vector Store
     COLLECTION_NAME: str = "orion_chunks"
@@ -40,7 +41,8 @@ class Config:
     # Supported file types
     SUPPORTED_EXTENSIONS: List[str] = field(default_factory=lambda: [
         ".pdf", ".docx", ".doc",
-        ".png", ".jpg", ".jpeg", ".webp", ".bmp",
+        ".csv", ".tsv",
+        ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".gif",
         ".mp3", ".wav", ".m4a", ".ogg", ".flac"
     ])
     
