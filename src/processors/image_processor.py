@@ -5,6 +5,7 @@ import base64
 import logging
 
 from .base import BaseProcessor, Chunk
+from ..chunking import Chunker
 from ..config import config
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ class ImageProcessor(BaseProcessor):
     
     def __init__(
         self,
+        chunker: Optional[Chunker] = None,
         use_ocr: bool = True,
         use_vision: bool = True,
         extract_tables: bool = True
@@ -41,6 +43,7 @@ class ImageProcessor(BaseProcessor):
             use_vision: Generate visual descriptions
             extract_tables: Detect and extract tables from images
         """
+        self.chunker = chunker or Chunker()
         self.use_ocr = use_ocr
         self.use_vision = use_vision
         self.extract_tables = extract_tables
@@ -145,36 +148,44 @@ class ImageProcessor(BaseProcessor):
             # Full content extraction (text + tables)
             content = ocr.extract_full_content(file_path)
             
-            # Text chunk
+            # Text chunks
             text = content.get("text", "").strip()
             if text:
-                chunks.append(Chunk(
-                    content=f"[OCR Text from Image]\n\n{text}",
-                    document_id=document_id,
-                    doc_type=self.doc_type,
-                    source_file=str(file_path),
-                    metadata={
-                        **img_metadata,
-                        "content_type": "ocr_text",
-                        "extraction_method": "deepseek"
-                    }
-                ))
-            
-            # Table chunks
-            if self.extract_tables:
-                for table_idx, table_md in enumerate(content.get("tables", [])):
+                text_chunks = self.chunker.chunk(text)
+                for idx, chunk_text in enumerate(text_chunks):
                     chunks.append(Chunk(
-                        content=f"[Table {table_idx + 1} from Image]\n\n{table_md}",
+                        content=f"[OCR Text from Image]\n\n{chunk_text}",
                         document_id=document_id,
                         doc_type=self.doc_type,
                         source_file=str(file_path),
                         metadata={
                             **img_metadata,
-                            "content_type": "table",
-                            "table_index": table_idx,
+                            "content_type": "ocr_text",
+                            "chunk_index": idx,
                             "extraction_method": "deepseek"
                         }
                     ))
+            
+            # Table chunks
+            if self.extract_tables:
+                for table_idx, table_md in enumerate(content.get("tables", [])):
+                    # Chunk large tables
+                    table_chunks = self.chunker.chunk(table_md)
+                    
+                    for chunk_idx, chunk_text in enumerate(table_chunks):
+                        chunks.append(Chunk(
+                            content=f"[Table {table_idx + 1} from Image]\n\n{chunk_text}",
+                            document_id=document_id,
+                            doc_type=self.doc_type,
+                            source_file=str(file_path),
+                            metadata={
+                                **img_metadata,
+                                "content_type": "table",
+                                "table_index": table_idx,
+                                "chunk_index": chunk_idx,
+                                "extraction_method": "deepseek"
+                            }
+                        ))
         
         except Exception as e:
             logger.error(f"OCR extraction failed: {e}")
@@ -242,18 +253,21 @@ class ImageProcessor(BaseProcessor):
             
             description = response["message"]["content"]
             if description:
-                chunks.append(Chunk(
-                    content=f"[Visual Description]\n\n{description}",
-                    document_id=document_id,
-                    doc_type=self.doc_type,
-                    source_file=str(file_path),
-                    metadata={
-                        **img_metadata,
-                        "content_type": "visual_description",
-                        "model": getattr(config, 'VISION_MODEL', 'llava'),
-                        "extraction_method": "vision"
-                    }
-                ))
+                desc_chunks = self.chunker.chunk(description)
+                for idx, chunk_text in enumerate(desc_chunks):
+                    chunks.append(Chunk(
+                        content=f"[Visual Description]\n\n{chunk_text}",
+                        document_id=document_id,
+                        doc_type=self.doc_type,
+                        source_file=str(file_path),
+                        metadata={
+                            **img_metadata,
+                            "content_type": "visual_description",
+                            "chunk_index": idx,
+                            "model": getattr(config, 'VISION_MODEL', 'llava'),
+                            "extraction_method": "vision"
+                        }
+                    ))
         
         except Exception as e:
             logger.error(f"Vision extraction failed: {e}")

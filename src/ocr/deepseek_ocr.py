@@ -72,6 +72,12 @@ class DeepSeekOCR:
             client = self._get_client()
             image_b64 = self._encode_image(image_path)
             
+            options = {
+                "temperature": 0.1,
+                "num_predict": 4096,
+                **getattr(config, 'OLLAMA_OPTIONS', {})
+            }
+
             response = client.chat(
                 model=self.model_name,
                 messages=[{
@@ -79,10 +85,7 @@ class DeepSeekOCR:
                     "content": prompt,
                     "images": [image_b64]
                 }],
-                options={
-                    "temperature": 0.1,
-                    "num_predict": 4096
-                }
+                options=options
             )
             
             return response["message"]["content"]

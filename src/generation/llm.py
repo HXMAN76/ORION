@@ -66,7 +66,8 @@ class LLM:
             messages=messages,
             options={
                 "temperature": temperature,
-                "num_predict": max_tokens
+                "num_predict": max_tokens,
+                **getattr(config, 'OLLAMA_OPTIONS', {})
             }
         )
         
@@ -104,7 +105,8 @@ class LLM:
             stream=True,
             options={
                 "temperature": temperature,
-                "num_predict": max_tokens
+                "num_predict": max_tokens,
+                **getattr(config, 'OLLAMA_OPTIONS', {})
             }
         )
         
@@ -140,7 +142,8 @@ class LLM:
             messages=formatted_messages,
             options={
                 "temperature": temperature,
-                "num_predict": max_tokens
+                "num_predict": max_tokens,
+                **getattr(config, 'OLLAMA_OPTIONS', {})
             }
         )
         

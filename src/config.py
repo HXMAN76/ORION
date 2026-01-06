@@ -27,9 +27,19 @@ class Config:
     VISION_MODEL: str = "llava"
     DEEPSEEK_MODEL: str = "deepseek-ocr"  # DeepSeek OCR model
     
+    # Ollama Performance Tuning (RTX 4060 8GB Optimization)
+    OLLAMA_OPTIONS: dict = field(default_factory=lambda: {
+        "num_batch": 64,      # Reduce batch size for 8GB VRAM
+        "num_gpu": 9,         # Limit GPU layers to prevent eviction loops
+        "num_ctx": 2048,      # Context window
+        # "flash_attn": True  # Uncomment if supported by installed Ollama version
+    })
+    
     # Vector Store
     COLLECTION_NAME: str = "orion_chunks"
     TOP_K_RESULTS: int = 5
+    USE_RERANKER: bool = True
+    RERANKER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     
     # Voice Processing
     WHISPER_MODEL: str = "base"  # tiny, base, small, medium, large

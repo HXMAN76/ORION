@@ -126,19 +126,24 @@ class PDFProcessor(BaseProcessor):
             
             # Add OCR-extracted tables
             for table_idx, table_md in enumerate(ocr_content.get("tables", [])):
-                chunks.append(Chunk(
-                    content=f"[Table from scanned page]\n{table_md}",
-                    document_id=document_id,
-                    doc_type=self.doc_type,
-                    source_file=str(file_path),
-                    page=page_num,
-                    metadata={
-                        **doc_metadata,
-                        "content_type": "table",
-                        "table_index": table_idx,
-                        "extraction_method": "ocr"
-                    }
-                ))
+                # Chunk large tables
+                table_chunks = self.chunker.chunk(table_md)
+                
+                for chunk_idx, chunk_text in enumerate(table_chunks):
+                    chunks.append(Chunk(
+                        content=f"[Table from scanned page]\n{chunk_text}",
+                        document_id=document_id,
+                        doc_type=self.doc_type,
+                        source_file=str(file_path),
+                        page=page_num,
+                        metadata={
+                            **doc_metadata,
+                            "content_type": "table",
+                            "table_index": table_idx,
+                            "chunk_index": chunk_idx,
+                            "extraction_method": "ocr"
+                        }
+                    ))
             
             # Extract embedded images
             if self.extract_images:
@@ -206,20 +211,25 @@ class PDFProcessor(BaseProcessor):
                     df = tab.to_pandas()
                     if not df.empty:
                         md = df.to_markdown(index=False)
-                        chunks.append(Chunk(
-                            content=f"[Table {table_idx + 1}]\n{md}",
-                            document_id=document_id,
-                            doc_type=self.doc_type,
-                            source_file=str(file_path),
-                            page=page_num,
-                            metadata={
-                                "content_type": "table",
-                                "table_index": table_idx,
-                                "rows": len(df),
-                                "columns": len(df.columns),
-                                "extraction_method": "native"
-                            }
-                        ))
+                        # Chunk large tables
+                        table_chunks = self.chunker.chunk(md)
+                        
+                        for chunk_idx, chunk_text in enumerate(table_chunks):
+                            chunks.append(Chunk(
+                                content=f"[Table {table_idx + 1}]\n{chunk_text}",
+                                document_id=document_id,
+                                doc_type=self.doc_type,
+                                source_file=str(file_path),
+                                page=page_num,
+                                metadata={
+                                    "content_type": "table",
+                                    "table_index": table_idx,
+                                    "chunk_index": chunk_idx,
+                                    "rows": len(df),
+                                    "columns": len(df.columns),
+                                    "extraction_method": "native"
+                                }
+                            ))
                 except Exception:
                     pass
         except Exception:
@@ -264,36 +274,44 @@ class PDFProcessor(BaseProcessor):
                             text = content.get("text", "").strip()
                             
                             if text:
-                                chunks.append(Chunk(
-                                    content=f"[Embedded Image Text]\n{text}",
-                                    document_id=document_id,
-                                    doc_type=self.doc_type,
-                                    source_file=str(file_path),
-                                    page=page_num,
-                                    metadata={
-                                        **doc_metadata,
-                                        "content_type": "embedded_image_text",
-                                        "image_index": img_idx,
-                                        "extraction_method": "ocr"
-                                    }
-                                ))
+                                # Chunk extracted text
+                                text_chunks = self.chunker.chunk(text)
+                                for idx, chunk_text in enumerate(text_chunks):
+                                    chunks.append(Chunk(
+                                        content=f"[Embedded Image Text]\n{chunk_text}",
+                                        document_id=document_id,
+                                        doc_type=self.doc_type,
+                                        source_file=str(file_path),
+                                        page=page_num,
+                                        metadata={
+                                            **doc_metadata,
+                                            "content_type": "embedded_image_text",
+                                            "image_index": img_idx,
+                                            "chunk_index": idx,
+                                            "extraction_method": "ocr"
+                                        }
+                                    ))
                             
                             # Get visual description
                             description = ocr.get_visual_description(tmp_path)
                             if description:
-                                chunks.append(Chunk(
-                                    content=f"[Image Description]\n{description}",
-                                    document_id=document_id,
-                                    doc_type=self.doc_type,
-                                    source_file=str(file_path),
-                                    page=page_num,
-                                    metadata={
-                                        **doc_metadata,
-                                        "content_type": "image_description",
-                                        "image_index": img_idx,
-                                        "extraction_method": "vision"
-                                    }
-                                ))
+                                # Chunk description
+                                desc_chunks = self.chunker.chunk(description)
+                                for idx, chunk_text in enumerate(desc_chunks):
+                                    chunks.append(Chunk(
+                                        content=f"[Image Description]\n{chunk_text}",
+                                        document_id=document_id,
+                                        doc_type=self.doc_type,
+                                        source_file=str(file_path),
+                                        page=page_num,
+                                        metadata={
+                                            **doc_metadata,
+                                            "content_type": "image_description",
+                                            "image_index": img_idx,
+                                            "chunk_index": idx,
+                                            "extraction_method": "vision"
+                                        }
+                                    ))
                         finally:
                             if tmp_path.exists():
                                 tmp_path.unlink()

@@ -52,10 +52,16 @@ class Embedder:
 
         client = self._get_client()
 
+        # Manual truncation to avoid context length errors
+        # 8000 chars is roughly 2000 tokens, safe for most models
+        if len(text) > 8000:
+            text = text[:8000]
+
         try:
             response = client.embeddings(
                 model=self.model,
-                prompt=text
+                prompt=text,
+                options=config.OLLAMA_OPTIONS
             )
             embedding = response.get("embedding")
             if embedding is None:
@@ -87,10 +93,14 @@ class Embedder:
             if not batch:
                 continue
 
+            # Manual truncation
+            batch = [t[:8000] if len(t) > 8000 else t for t in batch]
+
             try:
                 response = client.embeddings(
                     model=self.model,
-                    prompt=batch
+                    prompt=batch,
+                    options=config.OLLAMA_OPTIONS
                 )
                 batch_embeddings = response.get("embeddings")
 

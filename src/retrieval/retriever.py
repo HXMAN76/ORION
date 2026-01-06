@@ -6,6 +6,7 @@ from typing import List, Dict, Any
 
 from ..vectorstore import ChromaStore
 from ..config import config
+from .reranker import CrossEncoderReranker
 
 
 class Retriever:
@@ -21,6 +22,11 @@ class Retriever:
             store: ChromaStore instance (created if not provided)
         """
         self.store = store or ChromaStore()
+        self.reranker = None
+        if config.USE_RERANKER:
+            self.reranker = CrossEncoderReranker(
+                model_name=config.RERANKER_MODEL
+            )
 
     def retrieve(
         self,
@@ -47,10 +53,13 @@ class Retriever:
             return []
 
         top_k = top_k or config.TOP_K_RESULTS
+        
+        # 1. Fetch more candidates for re-ranking (e.g., 3x top_k)
+        fetch_k = top_k * 3 if self.reranker else top_k
 
         results = self.store.query(
             query_text=query,
-            n_results=top_k,
+            n_results=fetch_k,
             doc_types=doc_types,
             collections=collections
         )
@@ -58,6 +67,17 @@ class Retriever:
         # Defensive: ensure list format
         if not isinstance(results, list):
             return []
+            
+        # 2. Re-rank results
+        if self.reranker and results:
+            results = self.reranker.rerank(
+                query=query,
+                candidates=results,
+                top_k=top_k
+            )
+        else:
+            # Just slice top_k if no reranker
+            results = results[:top_k]
 
         # Filter by similarity threshold
         if min_similarity > 0.0:
