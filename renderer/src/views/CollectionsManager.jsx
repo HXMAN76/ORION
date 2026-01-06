@@ -133,7 +133,7 @@ export default function CollectionsManager() {
 
     // Delete collection handler
     const handleDeleteCollection = async (collectionName) => {
-        if (!confirm(`Delete collection "${collectionName}"? Documents will not be deleted.`)) {
+        if (!confirm(`Delete collection "${collectionName}"? All the documents in this collection will be deleted.`)) {
             return
         }
 

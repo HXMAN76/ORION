@@ -35,7 +35,7 @@ export default function Sidebar() {
 
     return (
         <aside className="w-sidebar flex flex-col bg-orion-bg-app border-r border-orion-border">
-            {/* Logo Area */}
+            {/* Logo Area
             <div className="p-5 border-b border-orion-border">
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-orion-accent to-orion-accent-dark flex items-center justify-center shadow-lg shadow-orion-accent/20">
@@ -46,7 +46,7 @@ export default function Sidebar() {
                         <p className="text-orion-text-muted text-xs">Multimodal RAG</p>
                     </div>
                 </div>
-            </div>
+            </div> */}
 
             {/* New Chat Button */}
             <div className="p-4">
@@ -86,16 +86,6 @@ export default function Sidebar() {
 
             {/* Divider */}
             <div className="my-4 mx-4 border-t border-orion-border" />
-
-            {/* Quick Actions */}
-            <div className="px-4 mb-4">
-                <button
-                    onClick={toggleIngestion}
-                    className="btn-secondary w-full text-sm"
-                >
-                    Upload Documents
-                </button>
-            </div>
 
             {/* Recent Chats */}
             <div className="flex-1 overflow-hidden flex flex-col">
