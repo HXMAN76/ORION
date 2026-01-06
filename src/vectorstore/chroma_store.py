@@ -1,6 +1,10 @@
-"""ChromaDB vector store with logical collections via metadata"""
+"""
+ChromaDB vector store with logical collections via metadata
+"""
+
 from typing import List, Optional, Dict, Any
 from pathlib import Path
+
 import chromadb
 from chromadb.config import Settings
 
@@ -11,78 +15,88 @@ from ..embedding import Embedder
 
 class ChromaStore:
     """
-    ChromaDB vector store with single physical collection and
-    logical collections via metadata filtering.
+    ChromaDB vector store with a single physical collection and
+    logical collections implemented via metadata filtering.
     """
-    
+
     def __init__(
-        self, 
-        persist_directory: Path = None,
-        collection_name: str = None,
-        embedder: Embedder = None
+        self,
+        persist_directory: Optional[Path] = None,
+        collection_name: Optional[str] = None,
+        embedder: Optional[Embedder] = None
     ):
         """
         Initialize ChromaDB store.
-        
+
         Args:
-            persist_directory: Directory for persistence (default from config)
-            collection_name: Name of the collection (default from config)
-            embedder: Embedder instance (created if not provided)
+            persist_directory: Directory for persistence
+            collection_name: Name of Chroma collection
+            embedder: Embedder instance
         """
-        self.persist_directory = persist_directory or config.CHROMA_DIR
+        self.persist_directory = Path(persist_directory or config.CHROMA_DIR)
         self.collection_name = collection_name or config.COLLECTION_NAME
         self.embedder = embedder or Embedder()
-        
-        # Initialize ChromaDB client with persistence
+
+        self.persist_directory.mkdir(parents=True, exist_ok=True)
+
+        # Persistent Chroma client
         self._client = chromadb.PersistentClient(
             path=str(self.persist_directory),
             settings=Settings(anonymized_telemetry=False)
         )
-        
-        # Get or create the main collection
+
+        # Single physical collection
         self._collection = self._client.get_or_create_collection(
             name=self.collection_name,
             metadata={"hnsw:space": "cosine"}
         )
-    
-    def add_chunks(self, chunks: List[Chunk], collections: List[str] = None) -> List[str]:
+
+    # ------------------------------------------------------------------
+    # INGESTION
+    # ------------------------------------------------------------------
+
+    def add_chunks(
+        self,
+        chunks: List[Chunk],
+        collections: Optional[List[str]] = None
+    ) -> List[str]:
         """
         Add chunks to the vector store.
-        
+
         Args:
-            chunks: List of Chunk objects to add
-            collections: Optional logical collections to assign
-            
+            chunks: List of Chunk objects
+            collections: Optional logical collections
+
         Returns:
-            List of chunk IDs
+            List of chunk IDs added
         """
         if not chunks:
             return []
-        
-        ids = []
-        documents = []
-        embeddings = []
-        metadatas = []
-        
+
+        ids: List[str] = []
+        documents: List[str] = []
+        embeddings: List[List[float]] = []
+        metadatas: List[Dict[str, Any]] = []
+
         for chunk in chunks:
-            # Add logical collections if provided
+            if not chunk.content or not chunk.content.strip():
+                continue
+
             if collections:
-                chunk.collections.extend(collections)
-            
-            # Generate embedding
+                for c in collections:
+                    if c not in chunk.collections:
+                        chunk.collections.append(c)
+
             embedding = self.embedder.embed(chunk.content)
-            
-            # Prepare metadata (ChromaDB requires flat structure)
-            metadata = {
+
+            metadata: Dict[str, Any] = {
                 "document_id": chunk.document_id,
                 "doc_type": chunk.doc_type,
                 "source_file": chunk.source_file,
                 "created_at": chunk.created_at,
-                # Store collections as comma-separated string
-                "collections": ",".join(chunk.collections) if chunk.collections else "",
+                "collections": ",".join(chunk.collections) if chunk.collections else ""
             }
-            
-            # Add optional fields if present
+
             if chunk.page is not None:
                 metadata["page"] = chunk.page
             if chunk.timestamp_start is not None:
@@ -91,257 +105,215 @@ class ChromaStore:
                 metadata["timestamp_end"] = chunk.timestamp_end
             if chunk.speaker:
                 metadata["speaker"] = chunk.speaker
-            
-            # Add any extra metadata
+
             for key, value in chunk.metadata.items():
                 if isinstance(value, (str, int, float, bool)):
                     metadata[key] = value
-            
+
             ids.append(chunk.id)
             documents.append(chunk.content)
             embeddings.append(embedding)
             metadatas.append(metadata)
-        
-        # Add to ChromaDB
+
+        if not ids:
+            return []
+
         self._collection.add(
             ids=ids,
             documents=documents,
             embeddings=embeddings,
             metadatas=metadatas
         )
-        
+
         return ids
-    
+
+    # ------------------------------------------------------------------
+    # QUERY
+    # ------------------------------------------------------------------
+
     def query(
         self,
         query_text: str,
-        n_results: int = None,
-        doc_types: List[str] = None,
-        collections: List[str] = None,
-        document_id: str = None
+        n_results: Optional[int] = None,
+        doc_types: Optional[List[str]] = None,
+        collections: Optional[List[str]] = None,
+        document_id: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Query the vector store.
-        
-        Args:
-            query_text: The search query
-            n_results: Number of results to return
-            doc_types: Filter by document types (pdf, docx, image, voice)
-            collections: Filter by logical collections
-            document_id: Filter by specific document
-            
+
         Returns:
-            List of results with content, metadata, and similarity scores
+            List of dicts with content, metadata, similarity
         """
+        if not query_text or not query_text.strip():
+            return []
+
         n_results = n_results or config.TOP_K_RESULTS
-        
-        # Generate query embedding
         query_embedding = self.embedder.embed(query_text)
-        
-        # Build where filter (excludes collections - handled in post-filter)
+
         where_filter = self._build_where_filter(doc_types, document_id)
-        
-        # If filtering by collections, fetch more results for post-filtering
         fetch_n = n_results * 3 if collections else n_results
-        
-        # Query ChromaDB
+
         results = self._collection.query(
             query_embeddings=[query_embedding],
             n_results=fetch_n,
-            where=where_filter if where_filter else None,
+            where=where_filter,
             include=["documents", "metadatas", "distances"]
         )
-        
-        # Format results
-        formatted = []
-        if results["ids"] and results["ids"][0]:
-            for i, chunk_id in enumerate(results["ids"][0]):
-                metadata = results["metadatas"][0][i]
-                
-                # Post-filter by collections if specified
-                if collections:
-                    chunk_collections = metadata.get("collections", "")
-                    chunk_coll_list = [c.strip() for c in chunk_collections.split(",") if c.strip()]
-                    
-                    # Check if any requested collection is in chunk's collections
-                    if not any(c in chunk_coll_list for c in collections):
-                        continue
-                
-                formatted.append({
-                    "id": chunk_id,
-                    "content": results["documents"][0][i],
-                    "metadata": metadata,
-                    "distance": results["distances"][0][i],
-                    "similarity": 1 - results["distances"][0][i]
-                })
-                
-                # Stop once we have enough results
-                if len(formatted) >= n_results:
-                    break
-        
+
+        formatted: List[Dict[str, Any]] = []
+
+        if not results.get("ids") or not results["ids"][0]:
+            return []
+
+        for i, chunk_id in enumerate(results["ids"][0]):
+            metadata = results["metadatas"][0][i]
+
+            if collections:
+                chunk_cols = [
+                    c.strip()
+                    for c in metadata.get("collections", "").split(",")
+                    if c.strip()
+                ]
+                if not any(c in chunk_cols for c in collections):
+                    continue
+
+            distance = results["distances"][0][i]
+            similarity = max(0.0, 1.0 - distance)
+
+            formatted.append({
+                "id": chunk_id,
+                "content": results["documents"][0][i],
+                "metadata": metadata,
+                "distance": distance,
+                "similarity": similarity
+            })
+
+            if len(formatted) >= n_results:
+                break
+
         return formatted
-    
+
+    # ------------------------------------------------------------------
+    # FILTER HELPERS
+    # ------------------------------------------------------------------
+
     def _build_where_filter(
         self,
-        doc_types: List[str] = None,
-        document_id: str = None
-    ) -> Optional[Dict]:
-        """Build ChromaDB where filter from parameters"""
+        doc_types: Optional[List[str]],
+        document_id: Optional[str]
+    ) -> Optional[Dict[str, Any]]:
         conditions = []
-        
+
         if document_id:
             conditions.append({"document_id": {"$eq": document_id}})
-        
+
         if doc_types:
             if len(doc_types) == 1:
                 conditions.append({"doc_type": {"$eq": doc_types[0]}})
             else:
                 conditions.append({"doc_type": {"$in": doc_types}})
-        
-        # Note: collections filtering is done in Python post-filter
-        # because ChromaDB doesn't support $contains operator
-        
+
         if not conditions:
             return None
-        elif len(conditions) == 1:
+        if len(conditions) == 1:
             return conditions[0]
-        else:
-            return {"$and": conditions}
-    
+
+        return {"$and": conditions}
+
+    # ------------------------------------------------------------------
+    # MANAGEMENT
+    # ------------------------------------------------------------------
+
     def delete_document(self, document_id: str) -> int:
-        """
-        Delete all chunks belonging to a document.
-        
-        Args:
-            document_id: The document ID to delete
-            
-        Returns:
-            Number of chunks deleted
-        """
-        # Get all chunks for this document
         results = self._collection.get(
             where={"document_id": {"$eq": document_id}},
             include=[]
         )
-        
-        if results["ids"]:
-            self._collection.delete(ids=results["ids"])
-            return len(results["ids"])
-        
+
+        ids = results.get("ids", [])
+        if ids:
+            self._collection.delete(ids=ids)
+            return len(ids)
         return 0
-    
+
     def get_all_documents(self) -> List[Dict[str, Any]]:
-        """Get list of all unique documents in the store"""
         results = self._collection.get(include=["metadatas"])
-        
-        documents = {}
-        for metadata in results["metadatas"]:
+
+        documents: Dict[str, Dict[str, Any]] = {}
+
+        for metadata in results.get("metadatas", []):
             doc_id = metadata.get("document_id")
             if doc_id and doc_id not in documents:
                 documents[doc_id] = {
                     "document_id": doc_id,
                     "doc_type": metadata.get("doc_type"),
                     "source_file": metadata.get("source_file"),
-                    "collections": metadata.get("collections", "").split(",") if metadata.get("collections") else []
+                    "collections": (
+                        metadata.get("collections", "").split(",")
+                        if metadata.get("collections") else []
+                    )
                 }
-        
+
         return list(documents.values())
-    
+
     def get_all_collections(self) -> List[str]:
-        """Get list of all logical collections"""
         results = self._collection.get(include=["metadatas"])
-        
+
         collections = set()
-        for metadata in results["metadatas"]:
-            coll_str = metadata.get("collections", "")
-            if coll_str:
-                for c in coll_str.split(","):
-                    if c.strip():
-                        collections.add(c.strip())
-        
-        return sorted(list(collections))
-    
+        for metadata in results.get("metadatas", []):
+            for c in metadata.get("collections", "").split(","):
+                if c.strip():
+                    collections.add(c.strip())
+
+        return sorted(collections)
+
     def add_to_collection(self, document_id: str, collection: str):
-        """Add a document to a logical collection"""
-        # Get all chunks for this document
         results = self._collection.get(
             where={"document_id": {"$eq": document_id}},
             include=["metadatas"]
         )
-        
-        if not results["ids"]:
-            return
-        
-        # Update each chunk's collections
-        for chunk_id, metadata in zip(results["ids"], results["metadatas"]):
-            current = metadata.get("collections", "")
-            current_list = [c.strip() for c in current.split(",") if c.strip()]
-            
-            if collection not in current_list:
-                current_list.append(collection)
-                new_collections = ",".join(current_list)
-                
+
+        for chunk_id, metadata in zip(results.get("ids", []), results.get("metadatas", [])):
+            current = [
+                c.strip() for c in metadata.get("collections", "").split(",") if c.strip()
+            ]
+            if collection not in current:
+                current.append(collection)
                 self._collection.update(
                     ids=[chunk_id],
-                    metadatas=[{"collections": new_collections}]
+                    metadatas=[{"collections": ",".join(current)}]
                 )
-    
-    def create_collection(self, name: str):
-        """
-        Create an empty logical collection.
-        
-        Since collections are stored as metadata on chunks, an 'empty' collection
-        is tracked via a special marker document.
-        """
-        # For now, empty collections aren't persisted as there are no chunks
-        # The collection will exist once documents are added to it
-        # This is a no-op but allows the API to succeed
-        pass
-    
+
     def delete_collection(self, collection_name: str) -> int:
-        """
-        Delete a logical collection by removing it from all documents.
-        
-        Args:
-            collection_name: The collection name to remove
-            
-        Returns:
-            Number of documents affected
-        """
-        # Get all chunks that belong to this collection
         results = self._collection.get(include=["metadatas"])
-        
-        affected_count = 0
-        for chunk_id, metadata in zip(results["ids"], results["metadatas"]):
-            current = metadata.get("collections", "")
-            current_list = [c.strip() for c in current.split(",") if c.strip()]
-            
-            if collection_name in current_list:
-                current_list.remove(collection_name)
-                new_collections = ",".join(current_list)
-                
+
+        affected = 0
+        for chunk_id, metadata in zip(results.get("ids", []), results.get("metadatas", [])):
+            current = [
+                c.strip() for c in metadata.get("collections", "").split(",") if c.strip()
+            ]
+            if collection_name in current:
+                current.remove(collection_name)
                 self._collection.update(
                     ids=[chunk_id],
-                    metadatas=[{"collections": new_collections}]
+                    metadatas=[{"collections": ",".join(current)}]
                 )
-                affected_count += 1
-        
-        return affected_count
-    
+                affected += 1
+
+        return affected
+
     def get_stats(self) -> Dict[str, Any]:
-        """Get statistics about the vector store"""
-        count = self._collection.count()
         documents = self.get_all_documents()
         collections = self.get_all_collections()
-        
-        # Count by doc_type
-        type_counts = {}
+
+        type_counts: Dict[str, int] = {}
         for doc in documents:
-            doc_type = doc.get("doc_type", "unknown")
-            type_counts[doc_type] = type_counts.get(doc_type, 0) + 1
-        
+            t = doc.get("doc_type", "unknown")
+            type_counts[t] = type_counts.get(t, 0) + 1
+
         return {
-            "total_chunks": count,
+            "total_chunks": self._collection.count(),
             "total_documents": len(documents),
             "total_collections": len(collections),
             "documents_by_type": type_counts,

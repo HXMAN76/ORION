@@ -1,76 +1,92 @@
-"""Semantic retriever for RAG queries"""
-from typing import List, Dict, Any, Optional
+"""
+Semantic retriever for RAG queries
+"""
+
+from typing import List, Dict, Any
 
 from ..vectorstore import ChromaStore
 from ..config import config
 
 
 class Retriever:
-    """Retrieve relevant chunks for RAG queries"""
-    
-    def __init__(self, store: ChromaStore = None):
+    """
+    Retrieve relevant chunks for RAG queries using vector similarity search.
+    """
+
+    def __init__(self, store: ChromaStore | None = None):
         """
         Initialize retriever.
-        
+
         Args:
             store: ChromaStore instance (created if not provided)
         """
         self.store = store or ChromaStore()
-    
+
     def retrieve(
         self,
         query: str,
-        top_k: int = None,
-        doc_types: List[str] = None,
-        collections: List[str] = None,
+        top_k: int | None = None,
+        doc_types: List[str] | None = None,
+        collections: List[str] | None = None,
         min_similarity: float = 0.0
     ) -> List[Dict[str, Any]]:
         """
         Retrieve relevant chunks for a query.
-        
+
         Args:
-            query: The search query
+            query: Search query
             top_k: Number of results to retrieve
-            doc_types: Filter by document types
-            collections: Filter by logical collections
-            min_similarity: Minimum similarity threshold
-            
+            doc_types: Optional document-type filter
+            collections: Optional logical collection filter
+            min_similarity: Minimum similarity threshold (0–1)
+
         Returns:
-            List of relevant chunks with metadata
+            List of retrieved chunks with metadata and similarity score
         """
+        if not query or not query.strip():
+            return []
+
         top_k = top_k or config.TOP_K_RESULTS
-        
+
         results = self.store.query(
             query_text=query,
             n_results=top_k,
             doc_types=doc_types,
             collections=collections
         )
-        
-        # Filter by minimum similarity
-        if min_similarity > 0:
-            results = [r for r in results if r.get("similarity", 0) >= min_similarity]
-        
+
+        # Defensive: ensure list format
+        if not isinstance(results, list):
+            return []
+
+        # Filter by similarity threshold
+        if min_similarity > 0.0:
+            results = [
+                r for r in results
+                if r.get("similarity") is not None
+                and r["similarity"] >= min_similarity
+            ]
+
         return results
-    
+
     def get_context(
         self,
         query: str,
-        top_k: int = None,
-        doc_types: List[str] = None,
-        collections: List[str] = None,
+        top_k: int | None = None,
+        doc_types: List[str] | None = None,
+        collections: List[str] | None = None,
         max_tokens: int = 2000
     ) -> str:
         """
-        Get formatted context for LLM prompt.
-        
+        Construct formatted context for LLM prompt.
+
         Args:
-            query: The search query
-            top_k: Number of results to retrieve
-            doc_types: Filter by document types
-            collections: Filter by logical collections
-            max_tokens: Maximum tokens for context
-            
+            query: Search query
+            top_k: Number of chunks to retrieve
+            doc_types: Optional document-type filter
+            collections: Optional logical collection filter
+            max_tokens: Maximum tokens allowed in context (soft limit)
+
         Returns:
             Formatted context string
         """
@@ -80,65 +96,77 @@ class Retriever:
             doc_types=doc_types,
             collections=collections
         )
-        
+
         if not results:
             return ""
-        
-        context_parts = []
-        
+
+        context_parts: List[str] = []
+        token_count = 0
+
         for i, result in enumerate(results, 1):
+            content = result.get("content", "")
+            if not content:
+                continue
+
             metadata = result.get("metadata", {})
-            source = metadata.get("source_file", "Unknown")
-            doc_type = metadata.get("doc_type", "unknown")
-            
-            # Format source info
-            source_info = f"[Source {i}: {source}"
-            if metadata.get("page"):
+
+            # ---- Source formatting ----
+            source_info = f"[Source {i}: {metadata.get('source_file', 'Unknown')}"
+            if metadata.get("page") is not None:
                 source_info += f", Page {metadata['page']}"
             if metadata.get("speaker"):
                 source_info += f", Speaker: {metadata['speaker']}"
-            if metadata.get("timestamp_start"):
+            if metadata.get("timestamp_start") is not None:
                 source_info += f", Time: {metadata['timestamp_start']:.1f}s"
             source_info += "]"
-            
-            context_parts.append(f"{source_info}\n{result['content']}")
-        
+
+            block = f"{source_info}\n{content}"
+
+            # Soft token control (approximate)
+            token_count += len(block.split())
+            if token_count > max_tokens:
+                break
+
+            context_parts.append(block)
+
         return "\n\n---\n\n".join(context_parts)
-    
+
     def get_sources(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Extract source information from retrieval results.
-        
+        Extract citation-friendly source metadata from retrieval results.
+
         Args:
-            results: List of retrieval results
-            
+            results: Retrieval results
+
         Returns:
-            List of source citations
+            List of source citation objects
         """
-        sources = []
-        
+        sources: List[Dict[str, Any]] = []
+
         for i, result in enumerate(results, 1):
             metadata = result.get("metadata", {})
-            
-            source = {
+
+            source: Dict[str, Any] = {
                 "index": i,
                 "source_file": metadata.get("source_file"),
                 "doc_type": metadata.get("doc_type"),
                 "document_id": metadata.get("document_id"),
-                "similarity": result.get("similarity", 0)
+                "similarity": result.get("similarity", 0.0)
             }
-            
-            # Add optional location info
-            if metadata.get("page"):
+
+            # Optional location metadata
+            if metadata.get("page") is not None:
                 source["page"] = metadata["page"]
-            if metadata.get("timestamp_start"):
+
+            if metadata.get("timestamp_start") is not None:
                 source["timestamp"] = {
                     "start": metadata["timestamp_start"],
                     "end": metadata.get("timestamp_end")
                 }
+
             if metadata.get("speaker"):
                 source["speaker"] = metadata["speaker"]
-            
+
             sources.append(source)
-        
+
         return sources
