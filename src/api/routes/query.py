@@ -39,6 +39,12 @@ async def query_rag(request: QueryRequest):
     # Save user query if session active
     if request.session_id:
         chat_db.add_message(request.session_id, "user", request.query)
+        
+        # Auto-rename session if it's "New Chat"
+        session = chat_db.get_session(request.session_id)
+        if session and session["title"] == "New Chat":
+            new_title = request.query[:50] + "..." if len(request.query) > 50 else request.query
+            chat_db.update_session_title(request.session_id, new_title)
 
     # Retrieve relevant chunks
     results = retriever.retrieve(
@@ -101,6 +107,12 @@ async def query_rag_stream(request: QueryRequest):
     # Save user query if session active
     if request.session_id:
         chat_db.add_message(request.session_id, "user", request.query)
+        
+        # Auto-rename session if it's "New Chat"
+        session = chat_db.get_session(request.session_id)
+        if session and session["title"] == "New Chat":
+            new_title = request.query[:50] + "..." if len(request.query) > 50 else request.query
+            chat_db.update_session_title(request.session_id, new_title)
 
     # Retrieve relevant chunks
     results = retriever.retrieve(
