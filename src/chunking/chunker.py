@@ -2,7 +2,7 @@
 from typing import List, Optional
 import re
 
-from ..config import config
+from config import config
 
 
 class Chunker:
