@@ -40,15 +40,15 @@ export default function ChatInput({ onSend, isLoading = false, disabled = false 
     return (
         <form onSubmit={handleSubmit} className="p-4 border-t border-orion-border bg-orion-bg-app">
             <div className="max-w-4xl mx-auto">
-                <div className="relative flex items-end gap-3 bg-orion-bg-card border border-orion-border rounded-3xl px-4 py-3 focus-within:border-orion-accent/50 transition-fast">
-                    {/* Attachment Button */}
+                <div className="relative flex items-center gap-3 bg-orion-bg-card border border-orion-border rounded-3xl px-4 py-3 focus-within:border-orion-accent/50 transition-fast">
+                    {/* Attachment Button
                     <button
                         type="button"
                         className="p-2 text-orion-text-muted hover:text-orion-text-primary rounded-xl hover:bg-orion-bg-hover transition-fast flex-shrink-0"
                         title="Attach file"
                     >
                         <Paperclip size={20} />
-                    </button>
+                    </button> */}
 
                     {/* Textarea */}
                     <textarea
@@ -62,22 +62,22 @@ export default function ChatInput({ onSend, isLoading = false, disabled = false 
                         className="flex-1 bg-transparent text-orion-text-primary placeholder:text-orion-text-muted text-base resize-none outline-none min-h-[28px] max-h-[200px] py-1"
                     />
 
-                    {/* Voice Button */}
+                    {/* Voice Button
                     <button
                         type="button"
                         className="p-2 text-orion-text-muted hover:text-orion-text-primary rounded-xl hover:bg-orion-bg-hover transition-fast flex-shrink-0"
                         title="Voice input"
                     >
                         <Mic size={20} />
-                    </button>
+                    </button> */}
 
                     {/* Send Button */}
                     <button
                         type="submit"
                         disabled={!message.trim() || isLoading || disabled}
-                        className={`p-3 rounded-xl transition-fast flex-shrink-0 ${message.trim() && !isLoading && !disabled
-                                ? 'bg-orion-accent text-orion-bg-app hover:bg-orion-accent-light shadow-lg shadow-orion-accent/20'
-                                : 'bg-orion-bg-elevated text-orion-text-muted cursor-not-allowed'
+                        className={`p-3 rounded-xl transition-fast flex-shrink-0 flex items-center justify-center ${message.trim() && !isLoading && !disabled
+                            ? 'bg-orion-accent text-orion-bg-app hover:bg-orion-accent-light shadow-lg shadow-orion-accent/20'
+                            : 'bg-orion-bg-elevated text-orion-text-muted cursor-not-allowed'
                             }`}
                     >
                         {isLoading ? (

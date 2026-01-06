@@ -30,10 +30,10 @@ export default function ChatMessage({ message }) {
             <div className={`max-w-[75%] ${isUser ? 'order-first' : ''}`}>
                 <div
                     className={`px-5 py-3.5 ${isUser
-                            ? 'message-user'
-                            : message.isError
-                                ? 'bg-orion-error/20 text-orion-error rounded-3xl rounded-bl-lg'
-                                : 'message-ai'
+                        ? 'message-user'
+                        : message.isError
+                            ? 'bg-orion-error/20 text-orion-error rounded-3xl rounded-bl-lg'
+                            : 'message-ai'
                         }`}
                 >
                     <p className="text-[15px] leading-relaxed whitespace-pre-wrap">
@@ -41,12 +41,18 @@ export default function ChatMessage({ message }) {
                     </p>
                 </div>
 
-                {/* Timestamp */}
-                <div className={`flex items-center gap-2 mt-1.5 px-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+                {/* Timestamp and Collection Scope */}
+                <div className={`flex flex-wrap items-center gap-2 mt-1.5 px-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
                     <Clock size={12} className="text-orion-text-muted" />
                     <span className="text-xs text-orion-text-muted">
                         {formatTime(message.timestamp)}
                     </span>
+                    {/* Show collection filter for user messages */}
+                    {isUser && message.collections && message.collections.length > 0 && (
+                        <span className="text-xs text-orion-accent bg-orion-accent/10 px-2 py-0.5 rounded-full">
+                            🔍 in {message.collections.join(', ')}
+                        </span>
+                    )}
                 </div>
 
                 {/* Sources Toggle (AI messages only) */}

@@ -3,7 +3,7 @@
  * Handles all communication with the Python FastAPI backend
  */
 
-const DEFAULT_BASE_URL = 'http://172.20.10.3:8000'
+const DEFAULT_BASE_URL = 'http://10.12.234.18:8000'
 
 class ApiClient {
     constructor(baseUrl = DEFAULT_BASE_URL) {
@@ -69,14 +69,21 @@ class ApiClient {
      * Get system statistics
      */
     async getStats() {
-        return this.request('/stats')
+        return this.request('/api/stats')
     }
 
     /**
-     * Get model status (LLM and Vision)
+     * Get model status (LLM availability)
      */
     async getModelStatus() {
-        return this.request('/models/status')
+        return this.request('/api/models/status')
+    }
+
+    /**
+     * Get supported file types for ingestion
+     */
+    async getSupportedTypes() {
+        return this.request('/api/ingest/supported')
     }
 
     // ============================================
@@ -87,23 +94,23 @@ class ApiClient {
      * Send a query and get a response (non-streaming)
      */
     async query(queryText, options = {}) {
-        return this.request('/query', {
+        return this.request('/api/query', {
             method: 'POST',
             body: JSON.stringify({
                 query: queryText,
-                collection: options.collection || 'default',
                 top_k: options.topK || 5,
-                include_sources: options.includeSources !== false,
+                doc_types: options.docTypes || null,
+                collections: options.collections || null,
             }),
         })
     }
 
     /**
      * Send a query with streaming response
-     * Returns an async generator that yields tokens
+     * Returns an async generator that yields parsed NDJSON objects
      */
     async *queryStream(queryText, options = {}) {
-        const url = `${this.baseUrl}/query/stream`
+        const url = `${this.baseUrl}/api/query/stream`
 
         const response = await fetch(url, {
             method: 'POST',
@@ -112,8 +119,9 @@ class ApiClient {
             },
             body: JSON.stringify({
                 query: queryText,
-                collection: options.collection || 'default',
                 top_k: options.topK || 5,
+                doc_types: options.docTypes || null,
+                collections: options.collections || null,
             }),
         })
 
@@ -123,38 +131,80 @@ class ApiClient {
 
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
+        let buffer = ''
 
         try {
             while (true) {
                 const { done, value } = await reader.read()
                 if (done) break
 
-                const chunk = decoder.decode(value, { stream: true })
-                const lines = chunk.split('\n')
+                buffer += decoder.decode(value, { stream: true })
+                const lines = buffer.split('\n')
+
+                // Keep the last incomplete line in the buffer
+                buffer = lines.pop() || ''
 
                 for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const data = line.slice(6)
-                        if (data === '[DONE]') return
+                    if (!line.trim()) continue
 
-                        try {
-                            const parsed = JSON.parse(data)
-                            if (parsed.token) {
-                                yield { type: 'token', content: parsed.token }
-                            }
-                            if (parsed.sources) {
-                                yield { type: 'sources', content: parsed.sources }
-                            }
-                        } catch {
-                            // Raw token
-                            yield { type: 'token', content: data }
+                    try {
+                        const parsed = JSON.parse(line)
+
+                        // Handle different message types from backend
+                        if (parsed.type === 'chunk') {
+                            yield { type: 'token', content: parsed.content }
+                        } else if (parsed.type === 'answer') {
+                            // Full answer for empty results
+                            yield { type: 'token', content: parsed.content }
+                        } else if (parsed.type === 'sources') {
+                            yield { type: 'sources', content: parsed.sources }
+                        } else if (parsed.type === 'error') {
+                            throw new Error(parsed.error)
+                        } else if (parsed.type === 'done') {
+                            return
+                        }
+                    } catch (parseError) {
+                        // If JSON parsing fails, treat as raw content
+                        if (parseError instanceof SyntaxError) {
+                            yield { type: 'token', content: line }
+                        } else {
+                            throw parseError
                         }
                     }
+                }
+            }
+
+            // Process any remaining content in buffer
+            if (buffer.trim()) {
+                try {
+                    const parsed = JSON.parse(buffer)
+                    if (parsed.type === 'chunk') {
+                        yield { type: 'token', content: parsed.content }
+                    } else if (parsed.type === 'sources') {
+                        yield { type: 'sources', content: parsed.sources }
+                    }
+                } catch {
+                    // Ignore incomplete JSON at the end
                 }
             }
         } finally {
             reader.releaseLock()
         }
+    }
+
+    /**
+     * Perform semantic search without LLM generation
+     */
+    async search(queryText, options = {}) {
+        return this.request('/api/search', {
+            method: 'POST',
+            body: JSON.stringify({
+                query: queryText,
+                top_k: options.topK || 10,
+                doc_types: options.docTypes || null,
+                collections: options.collections || null,
+            }),
+        })
     }
 
     // ============================================
@@ -165,16 +215,15 @@ class ApiClient {
      * Get all collections
      */
     async getCollections() {
-        return this.request('/collections')
+        return this.request('/api/collections')
     }
 
     /**
      * Create a new collection
      */
-    async createCollection(name, description = '') {
-        return this.request('/collections', {
+    async createCollection(name) {
+        return this.request(`/api/collections?name=${encodeURIComponent(name)}`, {
             method: 'POST',
-            body: JSON.stringify({ name, description }),
         })
     }
 
@@ -182,9 +231,29 @@ class ApiClient {
      * Delete a collection
      */
     async deleteCollection(name) {
-        return this.request(`/collections/${name}`, {
+        return this.request(`/api/collections/${encodeURIComponent(name)}`, {
             method: 'DELETE',
         })
+    }
+
+    /**
+     * Add a document to a collection
+     */
+    async addDocumentToCollection(documentId, collection) {
+        return this.request('/api/collections/add', {
+            method: 'POST',
+            body: JSON.stringify({
+                document_id: documentId,
+                collection: collection,
+            }),
+        })
+    }
+
+    /**
+     * Get documents in a specific collection
+     */
+    async getCollectionDocuments(collection) {
+        return this.request(`/api/collections/${encodeURIComponent(collection)}/documents`)
     }
 
     // ============================================
@@ -194,16 +263,15 @@ class ApiClient {
     /**
      * Get all documents
      */
-    async getDocuments(collection = null) {
-        const endpoint = collection ? `/documents?collection=${collection}` : '/documents'
-        return this.request(endpoint)
+    async getDocuments() {
+        return this.request('/api/documents')
     }
 
     /**
      * Delete a document
      */
-    async deleteDocument(docId) {
-        return this.request(`/documents/${docId}`, {
+    async deleteDocument(documentId) {
+        return this.request(`/api/documents/${encodeURIComponent(documentId)}`, {
             method: 'DELETE',
         })
     }
@@ -213,17 +281,17 @@ class ApiClient {
     // ============================================
 
     /**
-     * Ingest files (upload and process)
+     * Ingest a single file
      */
-    async ingestFiles(files, collection = 'default') {
+    async ingestFile(file, collections = null) {
         const formData = new FormData()
+        formData.append('file', file)
 
-        for (const file of files) {
-            formData.append('files', file)
+        if (collections && collections.length > 0) {
+            formData.append('collections', collections.join(','))
         }
-        formData.append('collection', collection)
 
-        const response = await fetch(`${this.baseUrl}/ingest`, {
+        const response = await fetch(`${this.baseUrl}/api/ingest`, {
             method: 'POST',
             body: formData,
         })
@@ -237,29 +305,92 @@ class ApiClient {
     }
 
     /**
-     * Get ingestion status
+     * Ingest multiple files in batch
      */
-    async getIngestionStatus(taskId) {
-        return this.request(`/ingest/status/${taskId}`)
+    async ingestFiles(files, collections = null) {
+        const formData = new FormData()
+
+        for (const file of files) {
+            formData.append('files', file)
+        }
+
+        if (collections && collections.length > 0) {
+            formData.append('collections', collections.join(','))
+        }
+
+        const response = await fetch(`${this.baseUrl}/api/ingest/batch`, {
+            method: 'POST',
+            body: formData,
+        })
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}))
+            throw new Error(errorData.detail || `HTTP ${response.status}`)
+        }
+
+        return response.json()
+    }
+
+    // ============================================
+    // Voice/Diarization Endpoints
+    // ============================================
+
+    /**
+     * Get diarization service status
+     */
+    async getDiarizationStatus() {
+        return this.request('/api/voice/diarize/status')
     }
 
     /**
-     * Poll ingestion status until complete
+     * Transcribe audio file (without speaker diarization)
      */
-    async waitForIngestion(taskId, onProgress = null, pollInterval = 1000) {
-        while (true) {
-            const status = await this.getIngestionStatus(taskId)
+    async transcribeAudio(file, language = null) {
+        const formData = new FormData()
+        formData.append('file', file)
 
-            if (onProgress) {
-                onProgress(status)
-            }
-
-            if (status.status === 'completed' || status.status === 'failed') {
-                return status
-            }
-
-            await new Promise(resolve => setTimeout(resolve, pollInterval))
+        if (language) {
+            formData.append('language', language)
         }
+
+        const response = await fetch(`${this.baseUrl}/api/voice/transcribe/upload`, {
+            method: 'POST',
+            body: formData,
+        })
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}))
+            throw new Error(errorData.detail || `HTTP ${response.status}`)
+        }
+
+        return response.json()
+    }
+
+    /**
+     * Diarize audio file (with speaker identification)
+     */
+    async diarizeAudio(file, options = {}) {
+        const formData = new FormData()
+        formData.append('file', file)
+
+        if (options.language) {
+            formData.append('language', options.language)
+        }
+        if (options.numSpeakers) {
+            formData.append('num_speakers', options.numSpeakers.toString())
+        }
+
+        const response = await fetch(`${this.baseUrl}/api/voice/diarize/upload`, {
+            method: 'POST',
+            body: formData,
+        })
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}))
+            throw new Error(errorData.detail || `HTTP ${response.status}`)
+        }
+
+        return response.json()
     }
 }
 

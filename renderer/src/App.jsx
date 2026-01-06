@@ -44,8 +44,8 @@ export default function App() {
         try {
           const stats = await api.getStats()
           setSystemInfo({
-            totalChunks: stats.total_chunks,
-            totalDocuments: stats.total_documents,
+            totalChunks: stats.total_chunks || 0,
+            totalDocuments: stats.total_documents || 0,
           })
         } catch (e) {
           console.warn('Stats not available:', e.message)
@@ -54,28 +54,37 @@ export default function App() {
         // Fetch model status
         try {
           const modelStatus = await api.getModelStatus()
+          // Backend returns { llm: { model, available } }
           setSystemInfo({
             llmModel: modelStatus.llm?.model || 'Unknown',
-            llmAvailable: modelStatus.llm?.available,
-            visionModel: modelStatus.vision?.model || 'Unknown',
-            visionAvailable: modelStatus.vision?.available,
+            llmAvailable: modelStatus.llm?.available ?? false,
           })
         } catch (e) {
           console.warn('Model status not available:', e.message)
         }
 
-        // Fetch collections
+        // Fetch collections (backend returns array of strings)
         try {
           const collections = await api.getCollections()
-          setCollections(collections)
+          setCollections(collections || [])
         } catch (e) {
           console.warn('Collections not available:', e.message)
         }
 
-        // Fetch documents
+        // Fetch documents and map to frontend format
         try {
-          const documents = await api.getDocuments()
-          setDocuments(documents)
+          const docsResponse = await api.getDocuments()
+          const mappedDocs = (docsResponse || []).map(doc => ({
+            id: doc.document_id,
+            document_id: doc.document_id,
+            name: doc.source_file,
+            source_file: doc.source_file,
+            doc_type: doc.doc_type,
+            collections: doc.collections || [],
+            chunks: doc.chunk_count,
+            created_at: doc.created_at,
+          }))
+          setDocuments(mappedDocs)
         } catch (e) {
           console.warn('Documents not available:', e.message)
         }

@@ -7,7 +7,7 @@ import FileQueue from './FileQueue'
 
 /**
  * IngestionPanel - Modal overlay for file upload and processing
- * Manages the full ingestion workflow
+ * Manages the full ingestion workflow with single and batch file uploads
  */
 export default function IngestionPanel() {
     const {
@@ -19,10 +19,13 @@ export default function IngestionPanel() {
         isIngesting,
         setIngesting,
         ingestionProgress,
+        setDocuments,
+        documents,
     } = useStore()
 
     const [error, setError] = useState(null)
     const [success, setSuccess] = useState(false)
+    const [processedCount, setProcessedCount] = useState(0)
 
     if (!isIngestionOpen) return null
 
@@ -31,6 +34,7 @@ export default function IngestionPanel() {
             setIngestionOpen(false)
             setError(null)
             setSuccess(false)
+            setProcessedCount(0)
         }
     }
 
@@ -40,45 +44,112 @@ export default function IngestionPanel() {
         setIngesting(true, 0)
         setError(null)
         setSuccess(false)
+        setProcessedCount(0)
+
+        const files = ingestionQueue.filter(f => f.status === 'queued')
+        const totalFiles = files.length
 
         try {
-            // Mark all as processing
-            ingestionQueue.forEach((file) => {
-                updateIngestionStatus(file.id, 'processing')
-            })
+            // Process files based on count
+            if (totalFiles === 1) {
+                // Single file - use single endpoint
+                const item = files[0]
+                updateIngestionStatus(item.id, 'processing')
+                setIngesting(true, 50)
 
-            // Extract actual File objects
-            const files = ingestionQueue.map((item) => item.file)
+                try {
+                    const response = await api.ingestFile(item.file)
+                    updateIngestionStatus(item.id, 'done')
+                    setProcessedCount(1)
 
-            // Upload files
-            const response = await api.ingestFiles(files)
-
-            // Poll for completion if we get a task ID
-            if (response.task_id) {
-                await api.waitForIngestion(response.task_id, (status) => {
-                    setIngesting(true, status.progress || 0)
+                    // Add to local documents state
+                    const newDoc = {
+                        id: response.document_id,
+                        document_id: response.document_id,
+                        name: response.filename,
+                        source_file: response.filename,
+                        doc_type: response.doc_type,
+                        chunks: response.chunks_created,
+                        collections: response.collections || [],
+                        created_at: new Date().toISOString(),
+                    }
+                    setDocuments([...documents, newDoc])
+                } catch (err) {
+                    updateIngestionStatus(item.id, 'error')
+                    throw err
+                }
+            } else {
+                // Multiple files - use batch endpoint
+                // Mark all as processing
+                files.forEach((file) => {
+                    updateIngestionStatus(file.id, 'processing')
                 })
+
+                // Extract actual File objects
+                const fileObjects = files.map((item) => item.file)
+
+                const response = await api.ingestFiles(fileObjects)
+
+                // Update statuses based on response
+                let successCount = 0
+
+                if (response.results) {
+                    response.results.forEach((result) => {
+                        const item = files.find(f => f.name === result.file)
+                        if (item) {
+                            updateIngestionStatus(item.id, 'done')
+                            successCount++
+
+                            // Add to local documents state
+                            const newDoc = {
+                                id: result.document_id,
+                                document_id: result.document_id,
+                                name: result.file,
+                                source_file: result.file,
+                                doc_type: result.file.split('.').pop(),
+                                chunks: result.chunks,
+                                collections: [],
+                                created_at: new Date().toISOString(),
+                            }
+                            setDocuments(prev => [...prev, newDoc])
+                        }
+                    })
+                }
+
+                if (response.errors) {
+                    response.errors.forEach((err) => {
+                        const item = files.find(f => f.name === err.file)
+                        if (item) {
+                            updateIngestionStatus(item.id, 'error')
+                        }
+                    })
+                }
+
+                setProcessedCount(successCount)
+
+                if (response.failed > 0) {
+                    setError(`${response.failed} file(s) failed to process`)
+                }
             }
 
-            // Mark all as done
-            ingestionQueue.forEach((file) => {
-                updateIngestionStatus(file.id, 'done')
-            })
-
             setSuccess(true)
+            setIngesting(true, 100)
 
             // Clear queue after delay
             setTimeout(() => {
                 clearIngestionQueue()
                 setSuccess(false)
+                setProcessedCount(0)
             }, 2000)
 
         } catch (err) {
             setError(err.message)
 
-            // Mark all as error
-            ingestionQueue.forEach((file) => {
-                updateIngestionStatus(file.id, 'error')
+            // Mark remaining files as error
+            files.forEach((file) => {
+                if (file.status === 'processing') {
+                    updateIngestionStatus(file.id, 'error')
+                }
             })
         } finally {
             setIngesting(false, 0)
@@ -86,6 +157,8 @@ export default function IngestionPanel() {
     }
 
     const queuedCount = ingestionQueue.filter(f => f.status === 'queued').length
+    const processingCount = ingestionQueue.filter(f => f.status === 'processing').length
+    const doneCount = ingestionQueue.filter(f => f.status === 'done').length
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -136,7 +209,9 @@ export default function IngestionPanel() {
                     {success && (
                         <div className="flex items-center gap-3 p-4 rounded-2xl bg-orion-success/10 border border-orion-success/20">
                             <CheckCircle size={20} className="text-orion-success flex-shrink-0" />
-                            <p className="text-sm text-orion-success">Files processed successfully!</p>
+                            <p className="text-sm text-orion-success">
+                                {processedCount} file{processedCount !== 1 ? 's' : ''} processed successfully!
+                            </p>
                         </div>
                     )}
 
@@ -144,7 +219,9 @@ export default function IngestionPanel() {
                     {isIngesting && (
                         <div className="space-y-2">
                             <div className="flex items-center justify-between text-sm">
-                                <span className="text-orion-text-secondary">Processing files...</span>
+                                <span className="text-orion-text-secondary">
+                                    Processing {processingCount > 0 ? `${doneCount + 1} of ${queuedCount + doneCount + processingCount}` : '...'}
+                                </span>
                                 <span className="text-orion-accent font-medium">{Math.round(ingestionProgress)}%</span>
                             </div>
                             <div className="h-2 bg-orion-bg-elevated rounded-full overflow-hidden">

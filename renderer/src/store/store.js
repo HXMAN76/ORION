@@ -162,6 +162,21 @@ const useStore = create((set, get) => ({
     setActiveDocument: (doc) => set({ activeDocument: doc }),
     activeSources: [],
     setActiveSources: (sources) => set({ activeSources: sources }),
+
+    // ============================================
+    // Query Filters (for collection-scoped searches)
+    // ============================================
+    selectedCollections: [], // Collections to filter queries to
+    setSelectedCollections: (collections) => set({ selectedCollections: collections }),
+    toggleCollectionFilter: (collection) => set((state) => {
+        const isSelected = state.selectedCollections.includes(collection)
+        return {
+            selectedCollections: isSelected
+                ? state.selectedCollections.filter(c => c !== collection)
+                : [...state.selectedCollections, collection]
+        }
+    }),
+    clearCollectionFilters: () => set({ selectedCollections: [] }),
 }))
 
 export default useStore
