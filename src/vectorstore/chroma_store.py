@@ -50,6 +50,34 @@ class ChromaStore:
             name=self.collection_name,
             metadata={"hnsw:space": "cosine"}
         )
+        
+        # Sidecar file for persistent collections (even empty ones)
+        self.collections_file = self.persist_directory / "collections.json"
+        self._ensure_collections_file()
+
+    def _ensure_collections_file(self):
+        """Ensure collections file exists"""
+        if not self.collections_file.exists():
+            import json
+            with open(self.collections_file, "w") as f:
+                json.dump([], f)
+
+    def _load_collections(self) -> List[str]:
+        """Load persistent collections"""
+        import json
+        try:
+            if self.collections_file.exists():
+                with open(self.collections_file, "r") as f:
+                    return json.load(f)
+        except Exception:
+            pass
+        return []
+
+    def _save_collections(self, collections: List[str]):
+        """Save persistent collections"""
+        import json
+        with open(self.collections_file, "w") as f:
+            json.dump(sorted(list(set(collections))), f)
 
     # ------------------------------------------------------------------
     # INGESTION
@@ -72,6 +100,17 @@ class ChromaStore:
         """
         if not chunks:
             return []
+            
+        # Ensure collections exist in persistent storage
+        if collections:
+            current = self._load_collections()
+            updated = False
+            for c in collections:
+                if c not in current:
+                    current.append(c)
+                    updated = True
+            if updated:
+                self._save_collections(current)
 
         ids: List[str] = []
         documents: List[str] = []
@@ -258,17 +297,38 @@ class ChromaStore:
         return list(documents.values())
 
     def get_all_collections(self) -> List[str]:
+        """Get all collections (both used and empty)"""
+        # Load from file
+        persistent = self._load_collections()
+        
+        # Also scan current documents to be safe/sync
         results = self._collection.get(include=["metadatas"])
-
-        collections = set()
+        used = set()
         for metadata in results.get("metadatas", []):
             for c in metadata.get("collections", "").split(","):
                 if c.strip():
-                    collections.add(c.strip())
+                    used.add(c.strip())
+        
+        # Merge
+        all_colls = sorted(list(set(persistent) | used))
+        
+        # Update persistent if we found new ones in metadata
+        if len(all_colls) > len(persistent):
+            self._save_collections(all_colls)
+            
+        return all_colls
 
-        return sorted(collections)
+    def create_collection(self, name: str):
+        """Create a new collection (persistent)"""
+        current = self._load_collections()
+        if name not in current:
+            current.append(name)
+            self._save_collections(current)
 
     def add_to_collection(self, document_id: str, collection: str):
+        # Ensure collection exists in persistent storage
+        self.create_collection(collection)
+        
         results = self._collection.get(
             where={"document_id": {"$eq": document_id}},
             include=["metadatas"]
@@ -286,18 +346,26 @@ class ChromaStore:
                 )
 
     def delete_collection(self, collection_name: str) -> int:
+        """Delete collection from persistent storage and remove tag from documents"""
+        # Remove from persistent storage
+        current = self._load_collections()
+        if collection_name in current:
+            current.remove(collection_name)
+            self._save_collections(current)
+            
+        # Remove tags from chunks
         results = self._collection.get(include=["metadatas"])
 
         affected = 0
         for chunk_id, metadata in zip(results.get("ids", []), results.get("metadatas", [])):
-            current = [
+            current_tags = [
                 c.strip() for c in metadata.get("collections", "").split(",") if c.strip()
             ]
-            if collection_name in current:
-                current.remove(collection_name)
+            if collection_name in current_tags:
+                current_tags.remove(collection_name)
                 self._collection.update(
                     ids=[chunk_id],
-                    metadatas=[{"collections": ",".join(current)}]
+                    metadatas=[{"collections": ",".join(current_tags)}]
                 )
                 affected += 1
 
