@@ -25,7 +25,7 @@ class Config:
     EMBEDDING_MODEL: str = "nomic-embed-text"
     LLM_MODEL: str = "mistral:7b"
     VISION_MODEL: str = "llava"
-    DEEPSEEK_MODEL: str = "deepseek-vl"  # DeepSeek vision model for OCR
+    DEEPSEEK_MODEL: str = "deepseek-ocr"  # DeepSeek OCR model (requires Ollama 0.13.0+)
     
     # Vector Store
     COLLECTION_NAME: str = "orion_chunks"

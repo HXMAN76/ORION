@@ -115,7 +115,7 @@ class DOCXProcessor(BaseProcessor):
                 self._ocr = DeepSeekOCR()
                 if not self._ocr.is_available():
                     print("Warning: DeepSeek model not found in Ollama, image OCR disabled")
-                    print("To enable image OCR, run: ollama pull deepseek-vl")
+                    print(f"To enable image OCR, run: ollama pull {config.DEEPSEEK_MODEL}")
                     self._ocr = None
             except Exception as e:
                 print(f"Warning: DeepSeek OCR failed to initialize: {e}")

@@ -40,7 +40,7 @@ class PDFProcessor(BaseProcessor):
                 self._ocr = DeepSeekOCR()
                 if not self._ocr.is_available():
                     print("Warning: DeepSeek model not found in Ollama, OCR disabled")
-                    print("To enable OCR, run: ollama pull deepseek-vl")
+                    print(f"To enable OCR, run: ollama pull {config.DEEPSEEK_MODEL}")
                     self._ocr = None
             except ImportError:
                 print("Warning: Ollama not installed, OCR disabled")

@@ -100,6 +100,6 @@ print("   curl -X POST 'http://localhost:8000/api/ingest' \\")
 print("        -F 'file=@test.docx'")
 
 print("\n" + "=" * 70)
-print("\n⚠ IMPORTANT: Ensure 'ollama pull deepseek-vl' is run on the server")
+print("\n⚠ IMPORTANT: Ensure 'ollama pull deepseek-ocr' is run on the server")
 print("  Without the model, OCR will be disabled but endpoints will still work.")
 print("\n" + "=" * 70)
