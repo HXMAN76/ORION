@@ -4,26 +4,32 @@ import api from './services/api'
 import useKeyboardShortcuts from './hooks/useKeyboardShortcuts'
 
 // Layout Components
-import CommandBar from './components/layout/CommandBar'
-import KnowledgeManager from './components/layout/KnowledgeManager'
-import MainWorkspace from './components/layout/MainWorkspace'
-import SourcesPanel from './components/layout/SourcesPanel'
+import TopBar from './components/layout/TopBar'
+import Sidebar from './components/layout/Sidebar'
+import ContextPanel from './components/layout/ContextPanel'
+
+// Views
+import Dashboard from './views/Dashboard'
+import QueryWorkspace from './views/QueryWorkspace'
+import CollectionsManager from './views/CollectionsManager'
+import SettingsView from './views/SettingsView'
 
 // Feature Components
 import IngestionPanel from './components/ingestion/IngestionPanel'
-import SettingsDrawer from './components/settings/SettingsDrawer'
 
 /**
  * ORION - Offline Multimodal Intelligence Workspace
- * Three-pane desktop layout for research and knowledge exploration
+ * "Mission Control" style desktop layout for research and knowledge exploration
  */
 export default function App() {
   const {
+    activeView,
+    setActiveView,
+    isContextPanelOpen,
     setBackendStatus,
     setSystemInfo,
     setCollections,
     setDocuments,
-    toggleSettings,
     toggleIngestion
   } = useStore()
 
@@ -87,35 +93,47 @@ export default function App() {
 
   // Global keyboard shortcuts
   useKeyboardShortcuts({
-    'ctrl+,': () => toggleSettings(),
+    'ctrl+,': () => setActiveView('settings'),
     'ctrl+i': () => toggleIngestion(),
-    'ctrl+k': () => {
-      // Focus search in knowledge manager
-      const searchInput = document.querySelector('input[placeholder*="Search"]')
-      searchInput?.focus()
-    }
+    'ctrl+k': () => setActiveView('query'),
+    'ctrl+d': () => setActiveView('dashboard'),
   })
 
+  // Render active view
+  const renderView = () => {
+    switch (activeView) {
+      case 'dashboard':
+        return <Dashboard />
+      case 'query':
+        return <QueryWorkspace />
+      case 'collections':
+        return <CollectionsManager />
+      case 'settings':
+        return <SettingsView />
+      default:
+        return <Dashboard />
+    }
+  }
+
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-orion-bg-primary">
-      {/* Top Command Bar */}
-      <CommandBar />
+    <div className="h-screen flex flex-col overflow-hidden bg-orion-bg-app">
+      {/* Top Bar - Slim status bar */}
+      <TopBar />
 
       {/* Main Three-Pane Layout */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left: Knowledge Manager */}
-        <KnowledgeManager />
+        {/* Left: Navigation Sidebar */}
+        <Sidebar />
 
-        {/* Center: Main Workspace */}
-        <MainWorkspace />
+        {/* Center: Main Workspace (Dynamic View) */}
+        {renderView()}
 
-        {/* Right: Sources Panel */}
-        <SourcesPanel />
+        {/* Right: Context Panel (Collapsible) */}
+        {isContextPanelOpen && <ContextPanel />}
       </div>
 
       {/* Modal Overlays */}
       <IngestionPanel />
-      <SettingsDrawer />
     </div>
   )
 }

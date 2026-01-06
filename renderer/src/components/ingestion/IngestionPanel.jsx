@@ -119,25 +119,27 @@ export default function IngestionPanel() {
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className="w-[600px] max-h-[80vh] bg-orion-bg-secondary rounded-xl border border-orion-border shadow-2xl overflow-hidden">
+            <div className="w-[600px] max-h-[80vh] bg-orion-bg-panel rounded-xl border border-orion-border-DEFAULT shadow-2xl overflow-hidden">
                 {/* Header */}
-                <header className="flex items-center justify-between px-5 py-4 border-b border-orion-border">
+                <header className="flex items-center justify-between px-5 py-4 border-b border-orion-border-DEFAULT">
                     <div className="flex items-center gap-3">
-                        <Upload className="w-5 h-5 text-orion-accent" />
-                        <h2 className="text-lg font-semibold text-orion-text-primary">
+                        <div className="p-2 rounded-lg bg-orion-accent/20">
+                            <Upload className="w-4 h-4 text-orion-accent" strokeWidth={1.5} />
+                        </div>
+                        <h2 className="text-base font-semibold text-orion-text-primary">
                             Ingest Documents
                         </h2>
                     </div>
                     <button
                         onClick={toggleIngestion}
-                        className="p-1.5 rounded hover:bg-orion-bg-tertiary transition-fast"
+                        className="p-1.5 rounded hover:bg-orion-bg-hover transition-fast"
                     >
-                        <X className="w-5 h-5 text-orion-text-muted" />
+                        <X className="w-5 h-5 text-orion-text-muted" strokeWidth={1.5} />
                     </button>
                 </header>
 
                 {/* Content */}
-                <div className="p-5 space-y-4 overflow-y-auto max-h-[60vh] scrollbar-thin">
+                <div className="p-5 space-y-4 overflow-y-auto max-h-[60vh] scrollbar-orion">
                     {/* Collection Selector */}
                     <div>
                         <label className="block text-sm text-orion-text-secondary mb-2">
@@ -146,7 +148,7 @@ export default function IngestionPanel() {
                         <select
                             value={selectedCollection}
                             onChange={(e) => setSelectedCollection(e.target.value)}
-                            className="w-full px-3 py-2 bg-orion-bg-tertiary border border-orion-border rounded-lg text-sm text-orion-text-primary outline-none focus:border-orion-accent transition-fast"
+                            className="w-full px-3 py-2.5 bg-orion-bg-card border border-orion-border-DEFAULT rounded-lg text-sm text-orion-text-primary outline-none focus:border-orion-accent transition-fast"
                         >
                             <option value="">No Collection</option>
                             {collections.map(coll => (
@@ -164,12 +166,12 @@ export default function IngestionPanel() {
                         onDrop={handleDrop}
                         onClick={handleFileSelect}
                         className={`flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-xl cursor-pointer transition-fast
-              ${isDragging
+                            ${isDragging
                                 ? 'border-orion-accent bg-orion-accent/10'
-                                : 'border-orion-border hover:border-orion-text-muted'
+                                : 'border-orion-border-DEFAULT hover:border-orion-text-muted'
                             }`}
                     >
-                        <FolderOpen className="w-10 h-10 text-orion-text-muted mb-3" />
+                        <FolderOpen className="w-10 h-10 text-orion-text-muted mb-3" strokeWidth={1.5} />
                         <p className="text-sm text-orion-text-secondary mb-1">
                             Drop files here or click to browse
                         </p>
@@ -187,16 +189,16 @@ export default function IngestionPanel() {
                             {files.map((file, index) => (
                                 <div
                                     key={index}
-                                    className="flex items-center gap-3 px-3 py-2 bg-orion-bg-tertiary rounded-lg"
+                                    className="flex items-center gap-3 px-3 py-2.5 bg-orion-bg-card rounded-lg border border-orion-border-DEFAULT"
                                 >
                                     <span className="flex-1 text-sm text-orion-text-primary truncate">
                                         {file.name}
                                     </span>
                                     <button
                                         onClick={() => removeFile(index)}
-                                        className="p-1 rounded hover:bg-orion-bg-elevated transition-fast"
+                                        className="p-1 rounded hover:bg-orion-bg-hover transition-fast"
                                     >
-                                        <X className="w-4 h-4 text-orion-text-muted" />
+                                        <X className="w-4 h-4 text-orion-text-muted" strokeWidth={1.5} />
                                     </button>
                                 </div>
                             ))}
@@ -210,19 +212,19 @@ export default function IngestionPanel() {
                 </div>
 
                 {/* Footer */}
-                <footer className="flex items-center justify-end gap-3 px-5 py-4 border-t border-orion-border bg-orion-bg-tertiary/50">
+                <footer className="flex items-center justify-end gap-3 px-5 py-4 border-t border-orion-border-DEFAULT bg-orion-bg-card">
                     <button
                         onClick={toggleIngestion}
-                        className="px-4 py-2 text-sm font-medium text-orion-text-secondary rounded-lg hover:bg-orion-bg-tertiary transition-fast"
+                        className="btn-ghost text-sm"
                     >
                         Cancel
                     </button>
                     <button
                         onClick={handleIngest}
                         disabled={files.length === 0 || isIngesting}
-                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-orion-accent rounded-lg hover:bg-orion-accent-light disabled:opacity-50 disabled:cursor-not-allowed transition-fast"
+                        className="btn-primary text-sm"
                     >
-                        <Plus className="w-4 h-4" />
+                        <Plus className="w-4 h-4 mr-2" strokeWidth={1.5} />
                         {isIngesting ? 'Ingesting...' : `Ingest ${files.length > 0 ? `(${files.length})` : ''}`}
                     </button>
                 </footer>
@@ -230,3 +232,4 @@ export default function IngestionPanel() {
         </div>
     )
 }
+

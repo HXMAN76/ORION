@@ -2,32 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================
+   ORION Design System - Cyber-Physical Theme
+   ============================================ */
+
 /* Local Font Faces - Bundled for Offline Use */
 @font-face {
-    font-family: 'Montserrat';
+    font-family: 'Inter';
     font-style: normal;
     font-weight: 400;
     font-display: swap;
-    src: local('Montserrat Regular'), local('Montserrat-Regular'),
-        url('/fonts/Montserrat-Regular.woff2') format('woff2');
+    src: local('Inter Regular'), local('Inter-Regular'),
+        url('/fonts/Inter-Regular.woff2') format('woff2');
 }
 
 @font-face {
-    font-family: 'Montserrat';
+    font-family: 'Inter';
     font-style: normal;
     font-weight: 500;
     font-display: swap;
-    src: local('Montserrat Medium'), local('Montserrat-Medium'),
-        url('/fonts/Montserrat-Medium.woff2') format('woff2');
+    src: local('Inter Medium'), local('Inter-Medium'),
+        url('/fonts/Inter-Medium.woff2') format('woff2');
 }
 
 @font-face {
-    font-family: 'Montserrat';
+    font-family: 'Inter';
     font-style: normal;
     font-weight: 600;
     font-display: swap;
-    src: local('Montserrat SemiBold'), local('Montserrat-SemiBold'),
-        url('/fonts/Montserrat-SemiBold.woff2') format('woff2');
+    src: local('Inter SemiBold'), local('Inter-SemiBold'),
+        url('/fonts/Inter-SemiBold.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: local('Inter Bold'), local('Inter-Bold'),
+        url('/fonts/Inter-Bold.woff2') format('woff2');
 }
 
 @font-face {
@@ -39,7 +52,18 @@
         url('/fonts/JetBrainsMono-Regular.woff2') format('woff2');
 }
 
-/* Base Styles */
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: local('JetBrains Mono Medium'), local('JetBrainsMono-Medium'),
+        url('/fonts/JetBrainsMono-Medium.woff2') format('woff2');
+}
+
+/* ============================================
+   Base Styles
+   ============================================ */
 @layer base {
 
     *,
@@ -56,7 +80,7 @@
     }
 
     body {
-        @apply font-sans bg-orion-bg-primary text-orion-text-primary;
+        @apply font-sans bg-orion-bg-app text-orion-text-primary;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
         line-height: 1.5;
@@ -70,28 +94,42 @@
     }
 }
 
-/* Custom Scrollbar */
+/* ============================================
+   Custom Scrollbars - Thin & Dark
+   ============================================ */
 @layer utilities {
-    .scrollbar-thin {
+
+    /* Thin scrollbar for all scrollable areas */
+    .scrollbar-orion {
         scrollbar-width: thin;
-        scrollbar-color: theme('colors.orion-bg.elevated') transparent;
+        scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
     }
 
-    .scrollbar-thin::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
+    .scrollbar-orion::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
     }
 
-    .scrollbar-thin::-webkit-scrollbar-track {
+    .scrollbar-orion::-webkit-scrollbar-track {
         background: transparent;
     }
 
-    .scrollbar-thin::-webkit-scrollbar-thumb {
-        @apply bg-orion-bg-elevated rounded-full;
+    .scrollbar-orion::-webkit-scrollbar-thumb {
+        @apply bg-white/10 rounded-full;
     }
 
-    .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-        @apply bg-orion-text-muted;
+    .scrollbar-orion::-webkit-scrollbar-thumb:hover {
+        @apply bg-white/20;
+    }
+
+    /* Hide scrollbar but keep functionality */
+    .scrollbar-none {
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+
+    .scrollbar-none::-webkit-scrollbar {
+        display: none;
     }
 
     /* Keyboard focus ring */
@@ -101,20 +139,78 @@
 
     /* Transition utilities */
     .transition-fast {
-        transition: all 150ms ease;
+        transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     .transition-normal {
-        transition: all 250ms ease;
+        transition: all 250ms cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .transition-slow {
+        transition: all 400ms cubic-bezier(0.4, 0, 0.2, 1);
     }
 }
 
-/* Component Styles */
+/* ============================================
+   Glassmorphism Effects
+   ============================================ */
+@layer utilities {
+
+    .glass {
+        @apply bg-white/5 backdrop-blur-md border border-white/10;
+    }
+
+    .glass-subtle {
+        @apply bg-white/[0.02] backdrop-blur-sm border border-white/[0.06];
+    }
+
+    .glass-active {
+        @apply bg-orion-accent/10 backdrop-blur-md border-orion-border-accent;
+    }
+
+    .glass-card {
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 100%);
+        @apply border border-orion-border-DEFAULT rounded-xl;
+    }
+}
+
+/* ============================================
+   Navigation Active State
+   ============================================ */
+@layer utilities {
+
+    .nav-active {
+        @apply relative;
+    }
+
+    .nav-active::before {
+        content: '';
+        @apply absolute left-0 top-1/2 -translate-y-1/2;
+        width: 3px;
+        height: 20px;
+        background: theme('colors.orion-accent.DEFAULT');
+        border-radius: 0 4px 4px 0;
+        box-shadow: 0 0 12px rgba(245, 158, 11, 0.5);
+    }
+}
+
+/* ============================================
+   Component Styles
+   ============================================ */
 @layer components {
 
     /* Panel base */
     .panel {
-        @apply bg-orion-bg-secondary border-orion-border;
+        @apply bg-orion-bg-panel border-orion-border;
+    }
+
+    /* Card base */
+    .card {
+        @apply bg-orion-bg-card border border-orion-border rounded-xl;
+    }
+
+    .card-elevated {
+        @apply bg-orion-bg-elevated border border-orion-border-light rounded-xl;
     }
 
     /* Interactive element base */
@@ -123,7 +219,27 @@
     }
 
     .interactive:hover {
-        @apply bg-orion-bg-tertiary;
+        @apply bg-orion-bg-hover;
+    }
+
+    /* Button variants */
+    .btn-primary {
+        @apply px-4 py-2 bg-orion-accent text-white rounded-lg font-medium;
+        @apply hover:bg-orion-accent-light active:bg-orion-accent-dark;
+        @apply transition-fast disabled:opacity-50 disabled:cursor-not-allowed;
+    }
+
+    .btn-secondary {
+        @apply px-4 py-2 bg-orion-bg-elevated text-orion-text-secondary rounded-lg;
+        @apply hover:bg-orion-bg-hover hover:text-orion-text-primary;
+        @apply border border-orion-border;
+        @apply transition-fast disabled:opacity-50 disabled:cursor-not-allowed;
+    }
+
+    .btn-ghost {
+        @apply px-4 py-2 text-orion-text-secondary rounded-lg;
+        @apply hover:bg-orion-bg-elevated hover:text-orion-text-primary;
+        @apply transition-fast disabled:opacity-50 disabled:cursor-not-allowed;
     }
 
     /* Status indicators */
@@ -133,6 +249,7 @@
 
     .status-dot-connected {
         @apply bg-orion-success;
+        box-shadow: 0 0 6px theme('colors.orion-success');
     }
 
     .status-dot-disconnected {
@@ -147,4 +264,115 @@
     .mono {
         @apply font-mono text-xs text-orion-text-muted;
     }
+
+    /* Input styles */
+    .input {
+        @apply w-full px-3 py-2 bg-orion-bg-elevated border border-orion-border rounded-lg;
+        @apply text-sm text-orion-text-primary placeholder:text-orion-text-muted;
+        @apply outline-none focus:border-orion-accent transition-fast;
+    }
+
+    /* Badge styles */
+    .badge {
+        @apply inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full;
+    }
+
+    .badge-amber {
+        @apply bg-orion-accent/20 text-orion-accent;
+    }
+
+    .badge-success {
+        @apply bg-orion-success/20 text-orion-success;
+    }
+
+    .badge-error {
+        @apply bg-orion-error/20 text-orion-error;
+    }
+}
+
+/* ============================================
+   Electron Drag Region
+   ============================================ */
+.drag-region {
+    -webkit-app-region: drag;
+}
+
+.no-drag {
+    -webkit-app-region: no-drag;
+}
+
+/* ============================================
+   Stat Card Gradients
+   ============================================ */
+.stat-gradient-amber {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(217, 119, 6, 0.02) 100%);
+}
+
+.stat-gradient-blue {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(37, 99, 235, 0.02) 100%);
+}
+
+.stat-gradient-green {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(22, 163, 74, 0.02) 100%);
+}
+
+.stat-gradient-purple {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.08) 0%, rgba(124, 58, 237, 0.02) 100%);
+}
+
+/* ============================================
+   Typography Helpers
+   ============================================ */
+.text-gradient-amber {
+    @apply bg-gradient-to-r from-orion-accent to-orion-accent-light bg-clip-text text-transparent;
+}
+
+.text-balance {
+    text-wrap: balance;
+}
+
+/* ============================================
+   Markdown Content Styling
+   ============================================ */
+.markdown-content {
+    @apply text-orion-text-primary leading-relaxed;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 {
+    @apply font-semibold text-orion-text-primary mt-4 mb-2;
+}
+
+.markdown-content p {
+    @apply mb-3;
+}
+
+.markdown-content code {
+    @apply px-1.5 py-0.5 bg-orion-bg-elevated rounded text-sm font-mono text-orion-accent;
+}
+
+.markdown-content pre {
+    @apply p-4 bg-orion-bg-elevated rounded-lg overflow-x-auto my-3;
+}
+
+.markdown-content pre code {
+    @apply bg-transparent p-0;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+    @apply pl-5 mb-3 space-y-1;
+}
+
+.markdown-content li {
+    @apply text-orion-text-secondary;
+}
+
+.markdown-content a {
+    @apply text-orion-accent hover:text-orion-accent-light underline;
+}
+
+.markdown-content blockquote {
+    @apply pl-4 border-l-2 border-orion-accent/50 text-orion-text-secondary italic my-3;
 }

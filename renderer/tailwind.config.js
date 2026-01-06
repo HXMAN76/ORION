@@ -7,37 +7,47 @@ export default {
     theme: {
         extend: {
             colors: {
-                // Background colors
+                // Core Backgrounds (Deep Matte Black - Cyber-Physical)
                 'orion-bg': {
-                    primary: '#0a0a0f',
-                    secondary: '#12121a',
-                    tertiary: '#1a1a25',
-                    elevated: '#22222f',
+                    app: '#050505',        // Main app background
+                    panel: '#0A0A0A',      // Panel backgrounds  
+                    card: '#121212',       // Card surfaces
+                    elevated: '#1A1A1A',   // Elevated elements
+                    hover: '#1F1F1F',      // Hover states
                 },
-                // Text colors
+                // Text Hierarchy
                 'orion-text': {
-                    primary: '#ffffff',
-                    secondary: '#a0a0b0',
-                    muted: '#606070',
+                    primary: '#FAFAFA',    // High emphasis
+                    secondary: '#A1A1AA',  // Medium emphasis (zinc-400)
+                    muted: '#52525B',      // Low emphasis (zinc-600)
                 },
-                // Accent
+                // Accent System (Electric Amber)
                 'orion-accent': {
-                    DEFAULT: '#6366f1',
-                    light: '#818cf8',
-                    dark: '#4f46e5',
+                    DEFAULT: '#F59E0B',    // Electric Amber
+                    light: '#FBBF24',      // Amber-400
+                    dark: '#D97706',       // Amber-600
+                    glow: 'rgba(245, 158, 11, 0.15)',
                 },
-                // Status
-                'orion-success': '#22c55e',
-                'orion-warning': '#f59e0b',
-                'orion-error': '#ef4444',
+                // Data visualization accents
+                'orion-data': {
+                    blue: '#3B82F6',
+                    cyan: '#06B6D4',
+                    green: '#22C55E',
+                    purple: '#8B5CF6',
+                },
+                // Status Colors
+                'orion-success': '#22C55E',
+                'orion-warning': '#F59E0B',
+                'orion-error': '#EF4444',
                 // Borders
                 'orion-border': {
-                    DEFAULT: 'rgba(255, 255, 255, 0.08)',
-                    light: 'rgba(255, 255, 255, 0.12)',
+                    DEFAULT: 'rgba(255,255,255,0.08)',
+                    light: 'rgba(255,255,255,0.12)',
+                    accent: 'rgba(245,158,11,0.3)',
                 },
             },
             fontFamily: {
-                sans: ['Montserrat', 'system-ui', 'sans-serif'],
+                sans: ['Inter', 'system-ui', 'sans-serif'],
                 mono: ['JetBrains Mono', 'Consolas', 'monospace'],
             },
             fontSize: {
@@ -47,14 +57,32 @@ export default {
                 'lg': ['1rem', { lineHeight: '1.75rem' }],
                 'xl': ['1.125rem', { lineHeight: '1.75rem' }],
                 '2xl': ['1.25rem', { lineHeight: '2rem' }],
+                '3xl': ['1.5rem', { lineHeight: '2rem' }],
+                '4xl': ['2rem', { lineHeight: '2.5rem' }],
             },
             spacing: {
-                'sidebar': '280px',
-                'sources': '320px',
-                'command-bar': '40px',
+                'sidebar': '240px',
+                'context': '300px',
+                'topbar': '36px',
+            },
+            borderRadius: {
+                'xl': '0.75rem',
+                '2xl': '1rem',
             },
             animation: {
                 'pulse-slow': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                'glow': 'glow 2s ease-in-out infinite alternate',
+            },
+            keyframes: {
+                glow: {
+                    '0%': { boxShadow: '0 0 5px rgba(245, 158, 11, 0.2)' },
+                    '100%': { boxShadow: '0 0 20px rgba(245, 158, 11, 0.4)' },
+                },
+            },
+            backgroundImage: {
+                'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
+                'gradient-amber': 'linear-gradient(135deg, rgba(245,158,11,0.1) 0%, rgba(217,119,6,0.05) 100%)',
+                'gradient-card': 'linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0) 100%)',
             },
         },
     },

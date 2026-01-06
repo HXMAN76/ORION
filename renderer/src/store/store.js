@@ -1,6 +1,14 @@
 import { create } from 'zustand'
 
 const useStore = create((set, get) => ({
+    // View Management
+    activeView: 'dashboard', // 'dashboard' | 'query' | 'collections' | 'settings'
+    setActiveView: (view) => set({ activeView: view }),
+
+    // Context Panel
+    isContextPanelOpen: true,
+    toggleContextPanel: () => set((state) => ({ isContextPanelOpen: !state.isContextPanelOpen })),
+
     // Backend Status
     backendStatus: 'checking', // 'checking' | 'connected' | 'disconnected'
     setBackendStatus: (status) => set({ backendStatus: status }),
@@ -8,6 +16,7 @@ const useStore = create((set, get) => ({
     // System Info (from /api/stats and /api/models/status)
     systemInfo: {
         llmModel: null,
+        llmAvailable: false,
         embeddingModel: null,
         vectorDbStatus: null,
         totalChunks: 0,
@@ -76,9 +85,10 @@ const useStore = create((set, get) => ({
         // Format sources from backend
         const formatted = sources.map((source, idx) => ({
             id: source.id || idx,
-            document: source.source_file || source.document || 'Unknown',
-            page: source.page_number,
-            chunk: source.chunk_index,
+            document: source.source_file || source.file || source.document || 'Unknown',
+            page: source.page_number || source.page,
+            chunk: source.chunk_index || source.chunk,
+            location: source.location,
             content: source.content || source.text || '',
             confidence: source.similarity || source.confidence || 0.5,
             ...source
@@ -119,10 +129,11 @@ const useStore = create((set, get) => ({
         settings: { ...state.settings, ...updates }
     })),
 
-    // UI State
+    // UI State (Legacy - Settings Drawer)
     isSettingsOpen: false,
     toggleSettings: () => set((state) => ({ isSettingsOpen: !state.isSettingsOpen })),
 
+    // Ingestion Panel
     isIngestionOpen: false,
     toggleIngestion: () => set((state) => ({ isIngestionOpen: !state.isIngestionOpen })),
 }))

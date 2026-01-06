@@ -1,4 +1,4 @@
-const API_BASE = 'http://127.0.0.1:8000'
+const API_BASE = 'http://172.20.10.3:8000'
 
 /**
  * API service for communicating with the FastAPI backend
