@@ -23,7 +23,7 @@ class Config:
     # Ollama
     OLLAMA_HOST: str = "http://localhost:11434"
     EMBEDDING_MODEL: str = "nomic-embed-text"
-    LLM_MODEL: str = "mistral:7b"
+    LLM_MODEL: str = "mistral:latest"
     VISION_MODEL: str = "llava"
     
     # Vector Store
