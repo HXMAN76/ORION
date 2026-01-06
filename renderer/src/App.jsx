@@ -19,7 +19,7 @@ import IngestionPanel from './components/ingestion/IngestionPanel'
 
 /**
  * ORION - Offline Multimodal Intelligence Workspace
- * "Mission Control" style desktop layout for research and knowledge exploration
+ * Premium dark-themed desktop layout for research and knowledge exploration
  */
 export default function App() {
   const {
@@ -46,7 +46,6 @@ export default function App() {
           setSystemInfo({
             totalChunks: stats.total_chunks,
             totalDocuments: stats.total_documents,
-            vectorDbStatus: 'Online'
           })
         } catch (e) {
           console.warn('Stats not available:', e.message)
@@ -57,7 +56,9 @@ export default function App() {
           const modelStatus = await api.getModelStatus()
           setSystemInfo({
             llmModel: modelStatus.llm?.model || 'Unknown',
-            llmAvailable: modelStatus.llm?.available
+            llmAvailable: modelStatus.llm?.available,
+            visionModel: modelStatus.vision?.model || 'Unknown',
+            visionAvailable: modelStatus.vision?.available,
           })
         } catch (e) {
           console.warn('Model status not available:', e.message)
@@ -95,8 +96,9 @@ export default function App() {
   useKeyboardShortcuts({
     'ctrl+,': () => setActiveView('settings'),
     'ctrl+i': () => toggleIngestion(),
-    'ctrl+k': () => setActiveView('query'),
+    'ctrl+k': () => setActiveView('chat'),
     'ctrl+d': () => setActiveView('dashboard'),
+    'ctrl+l': () => setActiveView('documents'),
   })
 
   // Render active view
@@ -104,14 +106,14 @@ export default function App() {
     switch (activeView) {
       case 'dashboard':
         return <Dashboard />
-      case 'query':
+      case 'chat':
         return <QueryWorkspace />
-      case 'collections':
+      case 'documents':
         return <CollectionsManager />
       case 'settings':
         return <SettingsView />
       default:
-        return <Dashboard />
+        return <QueryWorkspace />
     }
   }
 

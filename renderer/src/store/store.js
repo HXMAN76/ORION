@@ -1,141 +1,167 @@
 import { create } from 'zustand'
 
+/**
+ * ORION Global State Store
+ * Manages application state using Zustand
+ */
 const useStore = create((set, get) => ({
-    // View Management
-    activeView: 'dashboard', // 'dashboard' | 'query' | 'collections' | 'settings'
+    // ============================================
+    // Navigation State
+    // ============================================
+    activeView: 'chat', // 'chat' | 'documents' | 'settings'
     setActiveView: (view) => set({ activeView: view }),
 
-    // Context Panel
-    isContextPanelOpen: true,
-    toggleContextPanel: () => set((state) => ({ isContextPanelOpen: !state.isContextPanelOpen })),
+    // ============================================
+    // Sidebar State
+    // ============================================
+    isSidebarCollapsed: false,
+    toggleSidebar: () => set((state) => ({ isSidebarCollapsed: !state.isSidebarCollapsed })),
 
-    // Backend Status
-    backendStatus: 'checking', // 'checking' | 'connected' | 'disconnected'
+    // ============================================
+    // Context Panel State
+    // ============================================
+    isContextPanelOpen: false,
+    toggleContextPanel: () => set((state) => ({ isContextPanelOpen: !state.isContextPanelOpen })),
+    setContextPanelOpen: (open) => set({ isContextPanelOpen: open }),
+
+    // ============================================
+    // Backend Connection State
+    // ============================================
+    backendStatus: 'checking', // 'connected' | 'disconnected' | 'checking'
     setBackendStatus: (status) => set({ backendStatus: status }),
 
-    // System Info (from /api/stats and /api/models/status)
+    // ============================================
+    // System Info
+    // ============================================
     systemInfo: {
-        llmModel: null,
-        llmAvailable: false,
-        embeddingModel: null,
-        vectorDbStatus: null,
         totalChunks: 0,
         totalDocuments: 0,
+        llmModel: 'Unknown',
+        llmAvailable: false,
+        visionModel: 'Unknown',
+        visionAvailable: false,
     },
-    setSystemInfo: (info) => set({ systemInfo: { ...get().systemInfo, ...info } }),
+    setSystemInfo: (info) => set((state) => ({
+        systemInfo: { ...state.systemInfo, ...info }
+    })),
 
-    // Collections (from /api/collections - returns array of strings)
+    // ============================================
+    // Collections & Documents
+    // ============================================
     collections: [],
-    setCollections: (collections) => {
-        // Backend returns array of collection names as strings
-        const formatted = Array.isArray(collections)
-            ? collections.map((name, idx) =>
-                typeof name === 'string' ? { id: name, name } : name
-            )
-            : []
-        set({ collections: formatted })
-    },
-    activeCollection: null,
-    setActiveCollection: (id) => set({ activeCollection: id }),
+    setCollections: (collections) => set({ collections }),
 
-    // Documents (from /api/documents)
     documents: [],
-    setDocuments: (documents) => {
-        // Backend returns DocumentInfo objects
-        const formatted = documents.map(doc => ({
-            id: doc.document_id,
-            name: doc.source_file,
-            type: doc.doc_type,
-            collectionId: doc.collections?.[0] || 'uncategorized',
-            collections: doc.collections || [],
-            status: 'indexed'
+    setDocuments: (documents) => set({ documents }),
+
+    // ============================================
+    // Chat State
+    // ============================================
+    chatHistory: [],
+    currentChatId: null,
+    isStreaming: false,
+
+    // Recent chat sessions for sidebar
+    recentChats: [
+        { id: '1', title: 'Research on Neural Networks', timestamp: new Date() },
+        { id: '2', title: 'Document Analysis Query', timestamp: new Date() },
+        { id: '3', title: 'Image Classification Help', timestamp: new Date() },
+    ],
+
+    // Current conversation messages
+    messages: [],
+
+    addMessage: (message) => set((state) => ({
+        messages: [...state.messages, { ...message, id: Date.now(), timestamp: new Date() }]
+    })),
+
+    updateLastMessage: (content) => set((state) => {
+        const messages = [...state.messages]
+        if (messages.length > 0) {
+            messages[messages.length - 1].content = content
+        }
+        return { messages }
+    }),
+
+    appendToLastMessage: (token) => set((state) => {
+        const messages = [...state.messages]
+        if (messages.length > 0) {
+            messages[messages.length - 1].content += token
+        }
+        return { messages }
+    }),
+
+    setStreaming: (isStreaming) => set({ isStreaming }),
+
+    clearMessages: () => set({ messages: [], currentChatId: null }),
+
+    startNewChat: () => {
+        const newChatId = Date.now().toString()
+        set((state) => ({
+            messages: [],
+            currentChatId: newChatId,
+            recentChats: [
+                { id: newChatId, title: 'New Chat', timestamp: new Date() },
+                ...state.recentChats.slice(0, 9) // Keep last 10
+            ]
         }))
-        set({ documents: formatted })
     },
 
-    // Query Sessions
-    sessions: [],
-    addSession: (session) => set((state) => ({
-        sessions: [...state.sessions, {
-            id: Date.now(),
-            query: session.query,
-            response: '',
-            sources: [],
-            isStreaming: false,
-            timestamp: new Date().toISOString(),
-            ...session
-        }]
-    })),
-    updateSession: (id, updates) => set((state) => ({
-        sessions: state.sessions.map(s => {
-            if (s.id !== id) return s
-            // Handle function updates for response
-            const newUpdates = { ...updates }
-            if (typeof updates.response === 'function') {
-                newUpdates.response = updates.response(s.response)
-            }
-            return { ...s, ...newUpdates }
-        })
-    })),
-    clearSessions: () => set({ sessions: [] }),
-
-    // Active Sources (right panel)
-    activeSources: [],
-    setActiveSources: (sources) => {
-        // Format sources from backend
-        const formatted = sources.map((source, idx) => ({
-            id: source.id || idx,
-            document: source.source_file || source.file || source.document || 'Unknown',
-            page: source.page_number || source.page,
-            chunk: source.chunk_index || source.chunk,
-            location: source.location,
-            content: source.content || source.text || '',
-            confidence: source.similarity || source.confidence || 0.5,
-            ...source
-        }))
-        set({ activeSources: formatted })
-    },
-
-    // Processing Queue
-    processingQueue: [],
-    addToQueue: (item) => set((state) => ({
-        processingQueue: [...state.processingQueue, {
-            id: Date.now(),
-            file: item.file,
-            stage: 'reading', // reading | ocr | chunking | embedding | indexed | error
-            progress: 0,
-            ...item
-        }]
-    })),
-    updateQueueItem: (id, updates) => set((state) => ({
-        processingQueue: state.processingQueue.map(item =>
-            item.id === id ? { ...item, ...updates } : item
-        )
-    })),
-    removeFromQueue: (id) => set((state) => ({
-        processingQueue: state.processingQueue.filter(item => item.id !== id)
-    })),
-    clearQueue: () => set({ processingQueue: [] }),
-
-    // Settings
-    settings: {
-        chunkSize: 512,
-        overlapSize: 50,
-        topK: 5,
-        enableVision: true,
-        enableAudio: true,
-    },
-    updateSettings: (updates) => set((state) => ({
-        settings: { ...state.settings, ...updates }
-    })),
-
-    // UI State (Legacy - Settings Drawer)
-    isSettingsOpen: false,
-    toggleSettings: () => set((state) => ({ isSettingsOpen: !state.isSettingsOpen })),
-
-    // Ingestion Panel
+    // ============================================
+    // Ingestion State
+    // ============================================
     isIngestionOpen: false,
     toggleIngestion: () => set((state) => ({ isIngestionOpen: !state.isIngestionOpen })),
+    setIngestionOpen: (open) => set({ isIngestionOpen: open }),
+
+    ingestionQueue: [],
+    addToIngestionQueue: (files) => set((state) => ({
+        ingestionQueue: [...state.ingestionQueue, ...files.map(f => ({
+            id: Date.now() + Math.random(),
+            file: f,
+            name: f.name,
+            size: f.size,
+            type: f.type,
+            status: 'queued' // 'queued' | 'processing' | 'done' | 'error'
+        }))]
+    })),
+
+    removeFromIngestionQueue: (id) => set((state) => ({
+        ingestionQueue: state.ingestionQueue.filter(f => f.id !== id)
+    })),
+
+    clearIngestionQueue: () => set({ ingestionQueue: [] }),
+
+    updateIngestionStatus: (id, status) => set((state) => ({
+        ingestionQueue: state.ingestionQueue.map(f =>
+            f.id === id ? { ...f, status } : f
+        )
+    })),
+
+    isIngesting: false,
+    ingestionProgress: 0,
+    setIngesting: (isIngesting, progress = 0) => set({ isIngesting, ingestionProgress: progress }),
+
+    // ============================================
+    // Settings State
+    // ============================================
+    settings: {
+        llmModel: 'mistral',
+        visionModel: 'llava',
+        chunkSize: 512,
+        ollamaEndpoint: 'http://localhost:11434',
+    },
+    updateSettings: (newSettings) => set((state) => ({
+        settings: { ...state.settings, ...newSettings }
+    })),
+
+    // ============================================
+    // Active Document Context
+    // ============================================
+    activeDocument: null,
+    setActiveDocument: (doc) => set({ activeDocument: doc }),
+    activeSources: [],
+    setActiveSources: (sources) => set({ activeSources: sources }),
 }))
 
 export default useStore

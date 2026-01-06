@@ -7,33 +7,26 @@ export default {
     theme: {
         extend: {
             colors: {
-                // Core Backgrounds (Deep Matte Black - Cyber-Physical)
+                // Core Backgrounds (Per Design Reference)
                 'orion-bg': {
-                    app: '#050505',        // Main app background
-                    panel: '#0A0A0A',      // Panel backgrounds  
-                    card: '#121212',       // Card surfaces
-                    elevated: '#1A1A1A',   // Elevated elements
-                    hover: '#1F1F1F',      // Hover states
+                    app: '#060606',        // --bg-darkest
+                    panel: '#0A0A0A',      // Sidebar/panel backgrounds
+                    card: '#181811',       // --bg-card for bubbles, modals
+                    elevated: '#1E1E18',   // Slightly elevated surfaces
+                    hover: '#252520',      // Hover states
                 },
                 // Text Hierarchy
                 'orion-text': {
-                    primary: '#FAFAFA',    // High emphasis
-                    secondary: '#A1A1AA',  // Medium emphasis (zinc-400)
-                    muted: '#52525B',      // Low emphasis (zinc-600)
+                    primary: '#FFFFFF',    // --text-white
+                    secondary: '#AAAAAA',  // Medium emphasis
+                    muted: '#888888',      // --text-muted
                 },
-                // Accent System (Electric Amber)
+                // Accent System (Lime Green per reference)
                 'orion-accent': {
-                    DEFAULT: '#F59E0B',    // Electric Amber
-                    light: '#FBBF24',      // Amber-400
-                    dark: '#D97706',       // Amber-600
-                    glow: 'rgba(245, 158, 11, 0.15)',
-                },
-                // Data visualization accents
-                'orion-data': {
-                    blue: '#3B82F6',
-                    cyan: '#06B6D4',
-                    green: '#22C55E',
-                    purple: '#8B5CF6',
+                    DEFAULT: '#A0FF9B',    // --primary-accent (lime green)
+                    light: '#B8FFB4',      // Lighter variant
+                    dark: '#7BCC78',       // Darker variant
+                    glow: 'rgba(160, 255, 155, 0.15)',
                 },
                 // Status Colors
                 'orion-success': '#22C55E',
@@ -43,11 +36,11 @@ export default {
                 'orion-border': {
                     DEFAULT: 'rgba(255,255,255,0.08)',
                     light: 'rgba(255,255,255,0.12)',
-                    accent: 'rgba(245,158,11,0.3)',
+                    accent: 'rgba(160,255,155,0.3)',
                 },
             },
             fontFamily: {
-                sans: ['Inter', 'system-ui', 'sans-serif'],
+                sans: ['Gantari', 'Inter', 'system-ui', 'sans-serif'],
                 mono: ['JetBrains Mono', 'Consolas', 'monospace'],
             },
             fontSize: {
@@ -61,27 +54,39 @@ export default {
                 '4xl': ['2rem', { lineHeight: '2.5rem' }],
             },
             spacing: {
-                'sidebar': '240px',
-                'context': '300px',
-                'topbar': '36px',
+                'sidebar': '260px',
+                'context': '320px',
+                'topbar': '48px',
             },
             borderRadius: {
                 'xl': '0.75rem',
                 '2xl': '1rem',
+                '3xl': '1.5rem',
+                'full': '9999px',
             },
             animation: {
                 'pulse-slow': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                 'glow': 'glow 2s ease-in-out infinite alternate',
+                'fade-in': 'fadeIn 0.3s ease-out',
+                'slide-up': 'slideUp 0.3s ease-out',
             },
             keyframes: {
                 glow: {
-                    '0%': { boxShadow: '0 0 5px rgba(245, 158, 11, 0.2)' },
-                    '100%': { boxShadow: '0 0 20px rgba(245, 158, 11, 0.4)' },
+                    '0%': { boxShadow: '0 0 5px rgba(160, 255, 155, 0.2)' },
+                    '100%': { boxShadow: '0 0 20px rgba(160, 255, 155, 0.4)' },
+                },
+                fadeIn: {
+                    '0%': { opacity: '0' },
+                    '100%': { opacity: '1' },
+                },
+                slideUp: {
+                    '0%': { opacity: '0', transform: 'translateY(10px)' },
+                    '100%': { opacity: '1', transform: 'translateY(0)' },
                 },
             },
             backgroundImage: {
                 'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-                'gradient-amber': 'linear-gradient(135deg, rgba(245,158,11,0.1) 0%, rgba(217,119,6,0.05) 100%)',
+                'gradient-accent': 'linear-gradient(135deg, rgba(160,255,155,0.1) 0%, rgba(123,204,120,0.05) 100%)',
                 'gradient-card': 'linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0) 100%)',
             },
         },

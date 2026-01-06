@@ -1,139 +1,80 @@
-import {
-    Activity,
-    Database,
-    Cpu,
-    Layers,
-    Loader2,
-    PanelRightClose,
-    PanelRightOpen
-} from 'lucide-react'
+import { Minus, Square, X } from 'lucide-react'
 import useStore from '../../store/store'
 
 /**
- * TopBar - Slim 36px status bar with system awareness
- * Electron drag region with status indicators
+ * TopBar - Slim status bar at the top of the application
+ * Shows app title, backend status, and window controls
  */
 export default function TopBar() {
-    const {
-        backendStatus,
-        systemInfo,
-        processingQueue,
-        isContextPanelOpen,
-        toggleContextPanel
-    } = useStore()
+    const { backendStatus, systemInfo } = useStore()
 
-    const queueCount = processingQueue.length
-    const currentTime = new Date().toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false
-    })
-
-    return (
-        <header className="h-topbar flex items-center justify-between px-4 bg-orion-bg-panel border-b border-orion-border-DEFAULT select-none drag-region">
-            {/* Left: App Name + Backend Status */}
-            <div className="flex items-center gap-4 no-drag">
-                <div className="flex items-center gap-2">
-                    <div className="w-5 h-5 rounded bg-gradient-to-br from-orion-accent to-orion-accent-dark flex items-center justify-center">
-                        <span className="text-[10px] font-bold text-white">O</span>
-                    </div>
-                    <span className="font-semibold text-sm tracking-wide text-orion-text-primary">
-                        ORION
-                    </span>
-                </div>
-                <div className="h-3 w-px bg-orion-border-light" />
-                <StatusIndicator status={backendStatus} />
-            </div>
-
-            {/* Center: Model Info */}
-            <div className="flex items-center gap-6 no-drag">
-                <ModelInfo
-                    icon={Cpu}
-                    label="LLM"
-                    value={systemInfo.llmModel || 'Offline'}
-                    isActive={systemInfo.llmAvailable}
-                />
-                <ModelInfo
-                    icon={Database}
-                    label="VectorDB"
-                    value={systemInfo.vectorDbStatus || 'Offline'}
-                    isActive={systemInfo.vectorDbStatus === 'Online'}
-                />
-                <ModelInfo
-                    icon={Layers}
-                    label="Chunks"
-                    value={systemInfo.totalChunks?.toLocaleString() || '0'}
-                />
-            </div>
-
-            {/* Right: Queue + Time + Panel Toggle */}
-            <div className="flex items-center gap-3 no-drag">
-                {queueCount > 0 && (
-                    <div className="flex items-center gap-2 px-2 py-1 rounded bg-orion-accent/10 border border-orion-border-accent">
-                        <Loader2 className="w-3 h-3 text-orion-accent animate-spin" />
-                        <span className="mono text-orion-accent">{queueCount} processing</span>
-                    </div>
-                )}
-
-                <span className="mono text-orion-text-muted">{currentTime}</span>
-
-                <button
-                    onClick={toggleContextPanel}
-                    className="p-1.5 rounded hover:bg-orion-bg-hover transition-fast"
-                    title={isContextPanelOpen ? 'Hide Panel' : 'Show Panel'}
-                >
-                    {isContextPanelOpen ? (
-                        <PanelRightClose className="w-4 h-4 text-orion-text-secondary" strokeWidth={1.5} />
-                    ) : (
-                        <PanelRightOpen className="w-4 h-4 text-orion-text-secondary" strokeWidth={1.5} />
-                    )}
-                </button>
-            </div>
-        </header>
-    )
-}
-
-function StatusIndicator({ status }) {
-    const statusConfig = {
-        connected: {
-            color: 'status-dot-connected',
-            text: 'Online',
-            textColor: 'text-orion-success'
-        },
-        disconnected: {
-            color: 'status-dot-disconnected',
-            text: 'Offline',
-            textColor: 'text-orion-error'
-        },
-        checking: {
-            color: 'status-dot-checking',
-            text: 'Connecting...',
-            textColor: 'text-orion-warning'
-        },
+    const getStatusColor = () => {
+        switch (backendStatus) {
+            case 'connected': return 'status-dot-connected'
+            case 'disconnected': return 'status-dot-disconnected'
+            default: return 'status-dot-checking'
+        }
     }
 
-    const config = statusConfig[status] || statusConfig.disconnected
+    const getStatusText = () => {
+        switch (backendStatus) {
+            case 'connected': return 'Connected'
+            case 'disconnected': return 'Disconnected'
+            default: return 'Connecting...'
+        }
+    }
 
     return (
-        <div className="flex items-center gap-2">
-            <Activity className="w-3 h-3 text-orion-text-muted" strokeWidth={1.5} />
-            <span className={`status-dot ${config.color}`} />
-            <span className={`mono ${config.textColor}`}>{config.text}</span>
-        </div>
-    )
-}
+        <header className="h-12 bg-orion-bg-panel border-b border-orion-border flex items-center justify-between px-4 drag-region">
+            {/* Left: App Branding */}
+            <div className="flex items-center gap-3 no-drag">
+                <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-orion-accent flex items-center justify-center">
+                        <span className="text-orion-bg-app font-bold text-xs">O</span>
+                    </div>
+                    <span className="font-semibold text-orion-text-primary tracking-wide">ORION</span>
+                </div>
+                <span className="text-orion-text-muted text-xs">|</span>
+                <span className="text-orion-text-muted text-xs">Offline Intelligence</span>
+            </div>
 
-function ModelInfo({ icon: Icon, label, value, isActive }) {
-    return (
-        <div className="flex items-center gap-2">
-            <Icon
-                className={`w-3 h-3 ${isActive ? 'text-orion-accent' : 'text-orion-text-muted'}`}
-                strokeWidth={1.5}
-            />
-            <span className="mono text-orion-text-muted">{label}:</span>
-            <span className={`mono ${isActive ? 'text-orion-text-primary' : 'text-orion-text-secondary'}`}>
-                {value}
-            </span>
-        </div>
+            {/* Center: System Stats */}
+            <div className="flex items-center gap-6 text-xs text-orion-text-muted no-drag">
+                <div className="flex items-center gap-2">
+                    <span>Documents:</span>
+                    <span className="text-orion-text-secondary font-medium">{systemInfo.totalDocuments}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span>Chunks:</span>
+                    <span className="text-orion-text-secondary font-medium">{systemInfo.totalChunks}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span>LLM:</span>
+                    <span className="text-orion-text-secondary font-medium">{systemInfo.llmModel}</span>
+                </div>
+            </div>
+
+            {/* Right: Status & Window Controls */}
+            <div className="flex items-center gap-4 no-drag">
+                {/* Backend Status */}
+                <div className="flex items-center gap-2 text-xs">
+                    <div className={`status-dot ${getStatusColor()}`} />
+                    <span className="text-orion-text-muted">{getStatusText()}</span>
+                </div>
+
+                {/* Window Controls (Electron) */}
+                <div className="flex items-center gap-1">
+                    <button className="btn-icon w-8 h-8 flex items-center justify-center hover:bg-orion-bg-hover">
+                        <Minus size={14} />
+                    </button>
+                    <button className="btn-icon w-8 h-8 flex items-center justify-center hover:bg-orion-bg-hover">
+                        <Square size={12} />
+                    </button>
+                    <button className="btn-icon w-8 h-8 flex items-center justify-center hover:bg-orion-error/20 hover:text-orion-error">
+                        <X size={14} />
+                    </button>
+                </div>
+            </div>
+        </header>
     )
 }

@@ -1,361 +1,217 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import {
-    Search,
     FolderOpen,
-    FolderPlus,
+    Search,
+    Grid,
+    List,
+    MoreVertical,
     FileText,
     Image,
     Mic,
-    Video,
-    ChevronRight,
-    ChevronDown,
-    MoreVertical,
     Trash2,
-    CheckCircle2,
-    AlertCircle,
-    Loader2,
-    X,
+    Eye,
     Plus
 } from 'lucide-react'
 import useStore from '../store/store'
-import api from '../services/api'
 
 /**
- * CollectionsManager - Manage documents and collections
+ * CollectionsManager - Document library view
+ * Displays ingested documents with search and filter options
  */
 export default function CollectionsManager() {
-    const {
-        collections,
-        documents,
-        activeCollection,
-        setActiveCollection,
-        setCollections,
-        toggleIngestion
-    } = useStore()
-
+    const { documents, collections, toggleIngestion } = useStore()
+    const [viewMode, setViewMode] = useState('grid') // 'grid' | 'list'
     const [searchQuery, setSearchQuery] = useState('')
-    const [expandedCollections, setExpandedCollections] = useState(new Set())
-    const [showCreateModal, setShowCreateModal] = useState(false)
-    const [newCollectionName, setNewCollectionName] = useState('')
-    const [isCreating, setIsCreating] = useState(false)
+    const [selectedCollection, setSelectedCollection] = useState('all')
 
-    // Group documents by collection
-    const documentsByCollection = useMemo(() => {
-        const grouped = {}
-        documents.forEach(doc => {
-            const collId = doc.collectionId || 'uncategorized'
-            if (!grouped[collId]) grouped[collId] = []
-            grouped[collId].push(doc)
-        })
-        return grouped
-    }, [documents])
+    // Filter documents
+    const filteredDocuments = documents.filter((doc) => {
+        const matchesSearch = doc.name?.toLowerCase().includes(searchQuery.toLowerCase())
+        const matchesCollection = selectedCollection === 'all' || doc.collection === selectedCollection
+        return matchesSearch && matchesCollection
+    })
 
-    // Filter based on search
-    const filteredDocuments = useMemo(() => {
-        if (!searchQuery.trim()) return documentsByCollection
-
-        const query = searchQuery.toLowerCase()
-        const filtered = {}
-
-        Object.entries(documentsByCollection).forEach(([collId, docs]) => {
-            const matchingDocs = docs.filter(doc =>
-                doc.name.toLowerCase().includes(query)
-            )
-            if (matchingDocs.length > 0) {
-                filtered[collId] = matchingDocs
-            }
-        })
-
-        return filtered
-    }, [documentsByCollection, searchQuery])
-
-    const toggleCollection = (id) => {
-        setExpandedCollections(prev => {
-            const next = new Set(prev)
-            if (next.has(id)) {
-                next.delete(id)
-            } else {
-                next.add(id)
-            }
-            return next
-        })
-    }
-
-    const handleCreateCollection = async () => {
-        if (!newCollectionName.trim() || isCreating) return
-
-        setIsCreating(true)
-        try {
-            await api.createCollection(newCollectionName.trim())
-            const updatedCollections = await api.getCollections()
-            setCollections(updatedCollections)
-            setNewCollectionName('')
-            setShowCreateModal(false)
-        } catch (error) {
-            console.error('Failed to create collection:', error)
-        } finally {
-            setIsCreating(false)
+    const getFileIcon = (fileName) => {
+        const ext = fileName?.split('.').pop()?.toLowerCase()
+        switch (ext) {
+            case 'pdf': return { icon: FileText, color: 'text-red-400', bg: 'bg-red-400/10' }
+            case 'docx':
+            case 'doc': return { icon: FileText, color: 'text-blue-400', bg: 'bg-blue-400/10' }
+            case 'png':
+            case 'jpg':
+            case 'jpeg': return { icon: Image, color: 'text-green-400', bg: 'bg-green-400/10' }
+            case 'wav':
+            case 'mp3': return { icon: Mic, color: 'text-purple-400', bg: 'bg-purple-400/10' }
+            default: return { icon: FileText, color: 'text-orion-text-muted', bg: 'bg-orion-bg-elevated' }
         }
     }
 
-    const handleDeleteCollection = async (collectionName) => {
-        if (!confirm(`Delete collection "${collectionName}"? Documents will not be deleted.`)) return
-
-        try {
-            await api.deleteCollection(collectionName)
-            const updatedCollections = await api.getCollections()
-            setCollections(updatedCollections)
-            if (activeCollection === collectionName) {
-                setActiveCollection(null)
-            }
-        } catch (error) {
-            console.error('Failed to delete collection:', error)
-        }
+    const formatDate = (date) => {
+        return new Date(date).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        })
     }
 
     return (
-        <div className="flex-1 flex flex-col bg-orion-bg-app overflow-hidden">
+        <main className="flex-1 flex flex-col bg-orion-bg-app overflow-hidden">
             {/* Header */}
-            <header className="flex items-center justify-between px-6 py-4 border-b border-orion-border-DEFAULT bg-orion-bg-panel">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-orion-data-green/20">
-                        <FolderOpen className="w-4 h-4 text-orion-data-green" strokeWidth={1.5} />
+            <div className="px-6 py-4 border-b border-orion-border flex-shrink-0">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                        <FolderOpen size={24} className="text-orion-accent" />
+                        <div>
+                            <h1 className="text-xl font-semibold text-orion-text-primary">Library</h1>
+                            <p className="text-sm text-orion-text-muted">
+                                {documents.length} document{documents.length !== 1 ? 's' : ''} in your knowledge base
+                            </p>
+                        </div>
                     </div>
-                    <div>
-                        <h1 className="text-base font-semibold text-orion-text-primary">
-                            Collections
-                        </h1>
-                        <p className="mono text-[11px] text-orion-text-muted">
-                            {collections.length} collections • {documents.length} documents
-                        </p>
-                    </div>
-                </div>
 
-                <div className="flex items-center gap-2">
-                    <button
-                        onClick={toggleIngestion}
-                        className="flex items-center gap-2 px-3 py-2 text-xs bg-orion-bg-elevated hover:bg-orion-bg-hover rounded-lg text-orion-text-secondary transition-fast"
-                    >
-                        <Plus className="w-4 h-4" strokeWidth={1.5} />
-                        Add Files
-                    </button>
-                    <button
-                        onClick={() => setShowCreateModal(true)}
-                        className="flex items-center gap-2 px-3 py-2 text-xs bg-orion-accent hover:bg-orion-accent-light rounded-lg text-white transition-fast"
-                    >
-                        <FolderPlus className="w-4 h-4" strokeWidth={1.5} />
-                        New Collection
+                    <button onClick={toggleIngestion} className="btn-primary flex items-center gap-2">
+                        <Plus size={18} />
+                        <span>Add Documents</span>
                     </button>
                 </div>
-            </header>
 
-            {/* Search */}
-            <div className="px-6 py-4 border-b border-orion-border-DEFAULT bg-orion-bg-panel">
-                <div className="flex items-center gap-3 px-4 py-2.5 bg-orion-bg-card rounded-lg border border-orion-border-DEFAULT focus-within:border-orion-accent/50 transition-fast">
-                    <Search className="w-4 h-4 text-orion-text-muted shrink-0" strokeWidth={1.5} />
-                    <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Search documents..."
-                        className="flex-1 bg-transparent text-sm text-orion-text-primary placeholder:text-orion-text-muted outline-none"
-                    />
+                {/* Search & Filters */}
+                <div className="flex items-center gap-4">
+                    {/* Search */}
+                    <div className="flex-1 relative">
+                        <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-orion-text-muted" />
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search documents..."
+                            className="input pl-11"
+                        />
+                    </div>
+
+                    {/* Collection Filter */}
+                    <select
+                        value={selectedCollection}
+                        onChange={(e) => setSelectedCollection(e.target.value)}
+                        className="input w-auto min-w-[160px]"
+                    >
+                        <option value="all">All Collections</option>
+                        {collections.map((col) => (
+                            <option key={col.name} value={col.name}>{col.name}</option>
+                        ))}
+                    </select>
+
+                    {/* View Toggle */}
+                    <div className="flex items-center bg-orion-bg-card rounded-xl border border-orion-border p-1">
+                        <button
+                            onClick={() => setViewMode('grid')}
+                            className={`p-2 rounded-lg transition-fast ${viewMode === 'grid'
+                                    ? 'bg-orion-accent text-orion-bg-app'
+                                    : 'text-orion-text-muted hover:text-orion-text-primary'
+                                }`}
+                        >
+                            <Grid size={18} />
+                        </button>
+                        <button
+                            onClick={() => setViewMode('list')}
+                            className={`p-2 rounded-lg transition-fast ${viewMode === 'list'
+                                    ? 'bg-orion-accent text-orion-bg-app'
+                                    : 'text-orion-text-muted hover:text-orion-text-primary'
+                                }`}
+                        >
+                            <List size={18} />
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            {/* Collections List */}
-            <div className="flex-1 overflow-y-auto scrollbar-orion p-4">
-                {collections.length === 0 && documents.length === 0 ? (
-                    <EmptyState onCreateClick={() => setShowCreateModal(true)} />
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto scrollbar-thin p-6">
+                {filteredDocuments.length === 0 ? (
+                    <EmptyLibrary onUpload={toggleIngestion} />
+                ) : viewMode === 'grid' ? (
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {filteredDocuments.map((doc) => {
+                            const { icon: Icon, color, bg } = getFileIcon(doc.name)
+                            return (
+                                <DocumentCard key={doc.id} doc={doc} Icon={Icon} color={color} bg={bg} />
+                            )
+                        })}
+                    </div>
                 ) : (
                     <div className="space-y-2">
-                        {collections.map(collection => (
-                            <CollectionNode
-                                key={collection.id}
-                                collection={collection}
-                                documents={filteredDocuments[collection.id] || []}
-                                isExpanded={expandedCollections.has(collection.id)}
-                                isActive={activeCollection === collection.id}
-                                onToggle={() => toggleCollection(collection.id)}
-                                onSelect={() => setActiveCollection(collection.id)}
-                                onDelete={() => handleDeleteCollection(collection.id)}
-                            />
-                        ))}
-
-                        {filteredDocuments['uncategorized']?.length > 0 && (
-                            <CollectionNode
-                                collection={{ id: 'uncategorized', name: 'Uncategorized' }}
-                                documents={filteredDocuments['uncategorized']}
-                                isExpanded={expandedCollections.has('uncategorized')}
-                                isActive={activeCollection === 'uncategorized'}
-                                onToggle={() => toggleCollection('uncategorized')}
-                                onSelect={() => setActiveCollection('uncategorized')}
-                                canDelete={false}
-                            />
-                        )}
+                        {filteredDocuments.map((doc) => {
+                            const { icon: Icon, color, bg } = getFileIcon(doc.name)
+                            return (
+                                <DocumentRow key={doc.id} doc={doc} Icon={Icon} color={color} bg={bg} formatDate={formatDate} />
+                            )
+                        })}
                     </div>
                 )}
             </div>
-
-            {/* Create Modal */}
-            {showCreateModal && (
-                <CreateCollectionModal
-                    name={newCollectionName}
-                    setName={setNewCollectionName}
-                    onCreate={handleCreateCollection}
-                    onClose={() => { setShowCreateModal(false); setNewCollectionName('') }}
-                    isCreating={isCreating}
-                />
-            )}
-        </div>
+        </main>
     )
 }
 
-function CollectionNode({ collection, documents, isExpanded, isActive, onToggle, onSelect, onDelete, canDelete = true }) {
-    const [showMenu, setShowMenu] = useState(false)
-
+function DocumentCard({ doc, Icon, color, bg }) {
     return (
-        <div className="card overflow-hidden">
-            <div
-                className={`group flex items-center gap-3 px-4 py-3 transition-fast cursor-pointer
-                    ${isActive ? 'bg-orion-accent/10' : 'hover:bg-orion-bg-hover'}`}
-            >
-                <button
-                    onClick={() => { onToggle(); onSelect() }}
-                    className="flex-1 flex items-center gap-3 text-left"
-                >
-                    {isExpanded ? (
-                        <ChevronDown className="w-4 h-4 text-orion-text-muted shrink-0" strokeWidth={1.5} />
-                    ) : (
-                        <ChevronRight className="w-4 h-4 text-orion-text-muted shrink-0" strokeWidth={1.5} />
-                    )}
-                    <FolderOpen className={`w-4 h-4 shrink-0 ${isActive ? 'text-orion-accent' : 'text-orion-data-green'}`} strokeWidth={1.5} />
-                    <span className={`flex-1 text-sm font-medium ${isActive ? 'text-orion-text-primary' : 'text-orion-text-secondary'}`}>
-                        {collection.name}
-                    </span>
-                    <span className="badge badge-amber">{documents.length}</span>
-                </button>
-
-                {canDelete && (
-                    <div className="relative">
-                        <button
-                            onClick={(e) => { e.stopPropagation(); setShowMenu(!showMenu) }}
-                            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-orion-bg-elevated transition-fast"
-                        >
-                            <MoreVertical className="w-4 h-4 text-orion-text-muted" strokeWidth={1.5} />
-                        </button>
-
-                        {showMenu && (
-                            <>
-                                <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-                                <div className="absolute right-0 top-full mt-1 z-20 w-32 bg-orion-bg-elevated border border-orion-border-DEFAULT rounded-lg shadow-lg py-1">
-                                    <button
-                                        onClick={() => { onDelete?.(); setShowMenu(false) }}
-                                        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-orion-error hover:bg-orion-bg-hover transition-fast"
-                                    >
-                                        <Trash2 className="w-4 h-4" strokeWidth={1.5} />
-                                        Delete
-                                    </button>
-                                </div>
-                            </>
-                        )}
-                    </div>
-                )}
+        <div className="card p-4 hover:border-orion-accent/30 transition-fast group cursor-pointer">
+            <div className={`w-12 h-12 rounded-xl ${bg} flex items-center justify-center mb-4`}>
+                <Icon size={24} className={color} />
             </div>
-
-            {isExpanded && documents.length > 0 && (
-                <div className="border-t border-orion-border-DEFAULT divide-y divide-orion-border-DEFAULT">
-                    {documents.map(doc => (
-                        <DocumentItem key={doc.id} document={doc} />
-                    ))}
-                </div>
-            )}
-        </div>
-    )
-}
-
-function DocumentItem({ document }) {
-    const typeConfig = {
-        pdf: { icon: FileText, color: 'text-red-400' },
-        docx: { icon: FileText, color: 'text-blue-400' },
-        image: { icon: Image, color: 'text-green-400' },
-        audio: { icon: Mic, color: 'text-purple-400' },
-        video: { icon: Video, color: 'text-pink-400' },
-    }
-
-    const config = typeConfig[document.type] || typeConfig.pdf
-    const Icon = config.icon
-
-    const statusIcon = {
-        indexed: <CheckCircle2 className="w-3.5 h-3.5 text-orion-success" strokeWidth={1.5} />,
-        processing: <Loader2 className="w-3.5 h-3.5 text-orion-warning animate-spin" strokeWidth={1.5} />,
-        error: <AlertCircle className="w-3.5 h-3.5 text-orion-error" strokeWidth={1.5} />,
-    }
-
-    return (
-        <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-orion-bg-hover transition-fast">
-            <Icon className={`w-4 h-4 shrink-0 ${config.color}`} strokeWidth={1.5} />
-            <span className="flex-1 text-sm text-orion-text-secondary truncate">
-                {document.name}
-            </span>
-            {statusIcon[document.status]}
-        </div>
-    )
-}
-
-function CreateCollectionModal({ name, setName, onCreate, onClose, isCreating }) {
-    return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className="w-[400px] bg-orion-bg-panel rounded-xl border border-orion-border-DEFAULT shadow-2xl overflow-hidden">
-                <header className="flex items-center justify-between px-5 py-4 border-b border-orion-border-DEFAULT">
-                    <h3 className="text-sm font-semibold text-orion-text-primary">Create Collection</h3>
-                    <button onClick={onClose} className="p-1 rounded hover:bg-orion-bg-hover transition-fast">
-                        <X className="w-4 h-4 text-orion-text-muted" strokeWidth={1.5} />
-                    </button>
-                </header>
-                <div className="p-5">
-                    <input
-                        type="text"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && onCreate()}
-                        placeholder="Collection name..."
-                        className="input"
-                        autoFocus
-                    />
-                </div>
-                <footer className="flex justify-end gap-2 px-5 py-4 border-t border-orion-border-DEFAULT bg-orion-bg-card">
-                    <button onClick={onClose} className="btn-ghost text-sm">
-                        Cancel
-                    </button>
-                    <button
-                        onClick={onCreate}
-                        disabled={!name.trim() || isCreating}
-                        className="btn-primary text-sm"
-                    >
-                        {isCreating ? 'Creating...' : 'Create'}
-                    </button>
-                </footer>
-            </div>
-        </div>
-    )
-}
-
-function EmptyState({ onCreateClick }) {
-    return (
-        <div className="flex flex-col items-center justify-center h-full p-6 text-center">
-            <div className="w-16 h-16 rounded-2xl bg-orion-bg-card border border-orion-border-DEFAULT flex items-center justify-center mb-6">
-                <FolderOpen className="w-7 h-7 text-orion-text-muted" strokeWidth={1.5} />
-            </div>
-            <h2 className="text-lg font-semibold text-orion-text-primary mb-2">
-                No collections yet
-            </h2>
-            <p className="text-sm text-orion-text-muted mb-6 max-w-[280px]">
-                Create a collection to organize your documents
+            <h3 className="font-medium text-orion-text-primary truncate mb-1 group-hover:text-orion-accent transition-fast">
+                {doc.name}
+            </h3>
+            <p className="text-xs text-orion-text-muted">
+                {doc.chunks || 0} chunks • {doc.collection || 'default'}
             </p>
-            <button onClick={onCreateClick} className="btn-primary">
-                <FolderPlus className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                Create Collection
+        </div>
+    )
+}
+
+function DocumentRow({ doc, Icon, color, bg, formatDate }) {
+    return (
+        <div className="flex items-center gap-4 p-4 bg-orion-bg-card border border-orion-border rounded-xl hover:border-orion-accent/30 transition-fast group">
+            <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center flex-shrink-0`}>
+                <Icon size={20} className={color} />
+            </div>
+            <div className="flex-1 min-w-0">
+                <h3 className="font-medium text-orion-text-primary truncate group-hover:text-orion-accent transition-fast">
+                    {doc.name}
+                </h3>
+                <p className="text-xs text-orion-text-muted">
+                    {doc.chunks || 0} chunks • {doc.collection || 'default'}
+                </p>
+            </div>
+            <div className="text-sm text-orion-text-muted">
+                {formatDate(doc.created_at || new Date())}
+            </div>
+            <div className="flex items-center gap-1">
+                <button className="btn-icon">
+                    <Eye size={16} />
+                </button>
+                <button className="btn-icon hover:text-orion-error">
+                    <Trash2 size={16} />
+                </button>
+            </div>
+        </div>
+    )
+}
+
+function EmptyLibrary({ onUpload }) {
+    return (
+        <div className="h-full flex flex-col items-center justify-center">
+            <div className="w-20 h-20 rounded-3xl bg-orion-bg-card border border-orion-border flex items-center justify-center mb-6">
+                <FolderOpen size={36} className="text-orion-text-muted" />
+            </div>
+            <h2 className="text-xl font-semibold text-orion-text-primary mb-2">
+                No documents yet
+            </h2>
+            <p className="text-orion-text-secondary text-center max-w-md mb-6">
+                Upload documents to build your knowledge base. ORION supports PDFs, Word documents, images, and audio files.
+            </p>
+            <button onClick={onUpload} className="btn-primary">
+                Upload Your First Document
             </button>
         </div>
     )

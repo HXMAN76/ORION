@@ -1,203 +1,224 @@
-import { useState } from 'react'
-import { Settings, Sliders, Database, Cpu, Info, Save, RotateCcw } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Settings, Server, Brain, Sliders, CheckCircle, XCircle, Loader2 } from 'lucide-react'
 import useStore from '../store/store'
+import api from '../services/api'
 
 /**
- * SettingsView - Application settings and configuration
+ * SettingsView - Configuration options
+ * Model selection, chunk size, and Ollama status
  */
 export default function SettingsView() {
-    const { settings, updateSettings, systemInfo } = useStore()
-    const [localSettings, setLocalSettings] = useState(settings)
-    const [hasChanges, setHasChanges] = useState(false)
+    const { settings, updateSettings, backendStatus } = useStore()
+    const [ollamaStatus, setOllamaStatus] = useState('checking')
+    const [availableModels, setAvailableModels] = useState({
+        llm: ['mistral', 'llama3', 'phi3', 'gemma'],
+        vision: ['llava', 'bakllava', 'llava-phi3'],
+    })
 
-    const handleChange = (key, value) => {
-        setLocalSettings(prev => ({ ...prev, [key]: value }))
-        setHasChanges(true)
-    }
+    // Check Ollama status
+    useEffect(() => {
+        const checkOllama = async () => {
+            try {
+                const modelStatus = await api.getModelStatus()
+                setOllamaStatus(modelStatus.ollama_available ? 'connected' : 'disconnected')
 
-    const handleSave = () => {
-        updateSettings(localSettings)
-        setHasChanges(false)
-    }
+                if (modelStatus.available_models) {
+                    setAvailableModels(modelStatus.available_models)
+                }
+            } catch {
+                setOllamaStatus('disconnected')
+            }
+        }
 
-    const handleReset = () => {
-        setLocalSettings(settings)
-        setHasChanges(false)
+        if (backendStatus === 'connected') {
+            checkOllama()
+        }
+    }, [backendStatus])
+
+    const handleSettingChange = (key, value) => {
+        updateSettings({ [key]: value })
     }
 
     return (
-        <div className="flex-1 flex flex-col bg-orion-bg-app overflow-hidden">
+        <main className="flex-1 flex flex-col bg-orion-bg-app overflow-hidden">
             {/* Header */}
-            <header className="flex items-center justify-between px-6 py-4 border-b border-orion-border-DEFAULT bg-orion-bg-panel">
+            <div className="px-6 py-4 border-b border-orion-border flex-shrink-0">
                 <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-orion-data-purple/20">
-                        <Settings className="w-4 h-4 text-orion-data-purple" strokeWidth={1.5} />
-                    </div>
+                    <Settings size={24} className="text-orion-accent" />
                     <div>
-                        <h1 className="text-base font-semibold text-orion-text-primary">
-                            Settings
-                        </h1>
-                        <p className="mono text-[11px] text-orion-text-muted">
-                            Configure ORION behavior
-                        </p>
+                        <h1 className="text-xl font-semibold text-orion-text-primary">Settings</h1>
+                        <p className="text-sm text-orion-text-muted">Configure ORION to your preferences</p>
                     </div>
                 </div>
+            </div>
 
-                {hasChanges && (
-                    <div className="flex items-center gap-2">
-                        <button onClick={handleReset} className="btn-ghost text-sm">
-                            <RotateCcw className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                            Reset
-                        </button>
-                        <button onClick={handleSave} className="btn-primary text-sm">
-                            <Save className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                            Save Changes
-                        </button>
-                    </div>
-                )}
-            </header>
-
-            {/* Settings Content */}
-            <div className="flex-1 overflow-y-auto scrollbar-orion">
-                <div className="max-w-2xl mx-auto p-6 space-y-6">
-                    {/* Query Settings */}
-                    <SettingsSection
-                        icon={Sliders}
-                        title="Query Settings"
-                        description="Configure how queries are processed"
-                    >
-                        <SettingsRow label="Top-K Results" description="Number of similar chunks to retrieve">
-                            <div className="flex items-center gap-3">
-                                <input
-                                    type="range"
-                                    min="1"
-                                    max="20"
-                                    value={localSettings.topK}
-                                    onChange={(e) => handleChange('topK', parseInt(e.target.value))}
-                                    className="w-32 accent-orion-accent"
-                                />
-                                <span className="mono text-sm text-orion-accent w-6">{localSettings.topK}</span>
-                            </div>
-                        </SettingsRow>
-                    </SettingsSection>
-
-                    {/* Processing Settings */}
-                    <SettingsSection
-                        icon={Database}
-                        title="Processing Settings"
-                        description="Configure document ingestion"
-                    >
-                        <SettingsRow label="Chunk Size" description="Target size for document chunks">
-                            <div className="flex items-center gap-3">
-                                <input
-                                    type="range"
-                                    min="128"
-                                    max="2048"
-                                    step="64"
-                                    value={localSettings.chunkSize}
-                                    onChange={(e) => handleChange('chunkSize', parseInt(e.target.value))}
-                                    className="w-32 accent-orion-accent"
-                                />
-                                <span className="mono text-sm text-orion-text-secondary w-12">{localSettings.chunkSize}</span>
-                            </div>
-                        </SettingsRow>
-
-                        <SettingsRow label="Overlap Size" description="Overlap between chunks">
-                            <div className="flex items-center gap-3">
-                                <input
-                                    type="range"
-                                    min="0"
-                                    max="256"
-                                    step="16"
-                                    value={localSettings.overlapSize}
-                                    onChange={(e) => handleChange('overlapSize', parseInt(e.target.value))}
-                                    className="w-32 accent-orion-accent"
-                                />
-                                <span className="mono text-sm text-orion-text-secondary w-12">{localSettings.overlapSize}</span>
-                            </div>
-                        </SettingsRow>
-
-                        <SettingsRow label="Enable Vision" description="Process images with vision models">
-                            <ToggleSwitch
-                                enabled={localSettings.enableVision}
-                                onChange={(val) => handleChange('enableVision', val)}
-                            />
-                        </SettingsRow>
-
-                        <SettingsRow label="Enable Audio" description="Process audio files with transcription">
-                            <ToggleSwitch
-                                enabled={localSettings.enableAudio}
-                                onChange={(val) => handleChange('enableAudio', val)}
-                            />
-                        </SettingsRow>
-                    </SettingsSection>
-
-                    {/* System Info */}
-                    <SettingsSection
-                        icon={Info}
-                        title="System Information"
-                        description="Current system status"
-                    >
-                        <div className="grid grid-cols-2 gap-4">
-                            <InfoCard label="LLM Model" value={systemInfo.llmModel || 'Not loaded'} />
-                            <InfoCard label="Embedding Model" value={systemInfo.embeddingModel || 'Default'} />
-                            <InfoCard label="Vector DB" value={systemInfo.vectorDbStatus || 'Offline'} />
-                            <InfoCard label="Total Chunks" value={systemInfo.totalChunks?.toLocaleString() || '0'} />
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto scrollbar-thin p-6">
+                <div className="max-w-2xl space-y-6">
+                    {/* Ollama Status */}
+                    <section className="card p-6">
+                        <div className="flex items-center gap-3 mb-4">
+                            <Server size={20} className="text-orion-accent" />
+                            <h2 className="font-semibold text-orion-text-primary">Ollama Status</h2>
                         </div>
-                    </SettingsSection>
+
+                        <div className="flex items-center justify-between p-4 bg-orion-bg-elevated rounded-xl">
+                            <div className="flex items-center gap-3">
+                                {ollamaStatus === 'checking' && (
+                                    <Loader2 size={20} className="text-orion-warning animate-spin" />
+                                )}
+                                {ollamaStatus === 'connected' && (
+                                    <CheckCircle size={20} className="text-orion-success" />
+                                )}
+                                {ollamaStatus === 'disconnected' && (
+                                    <XCircle size={20} className="text-orion-error" />
+                                )}
+                                <div>
+                                    <p className="font-medium text-orion-text-primary">
+                                        {ollamaStatus === 'checking' && 'Checking connection...'}
+                                        {ollamaStatus === 'connected' && 'Ollama is running'}
+                                        {ollamaStatus === 'disconnected' && 'Ollama not available'}
+                                    </p>
+                                    <p className="text-sm text-orion-text-muted">
+                                        {settings.ollamaEndpoint}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className={`status-dot ${ollamaStatus === 'connected' ? 'status-dot-connected' :
+                                    ollamaStatus === 'disconnected' ? 'status-dot-disconnected' :
+                                        'status-dot-checking'
+                                }`} />
+                        </div>
+                    </section>
+
+                    {/* Model Selection */}
+                    <section className="card p-6">
+                        <div className="flex items-center gap-3 mb-6">
+                            <Brain size={20} className="text-orion-accent" />
+                            <h2 className="font-semibold text-orion-text-primary">Model Selection</h2>
+                        </div>
+
+                        <div className="space-y-6">
+                            {/* LLM Model */}
+                            <div>
+                                <label className="block text-sm font-medium text-orion-text-secondary mb-2">
+                                    Language Model (LLM)
+                                </label>
+                                <select
+                                    value={settings.llmModel}
+                                    onChange={(e) => handleSettingChange('llmModel', e.target.value)}
+                                    className="input"
+                                >
+                                    {availableModels.llm.map((model) => (
+                                        <option key={model} value={model}>
+                                            {model.charAt(0).toUpperCase() + model.slice(1)}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-xs text-orion-text-muted mt-2">
+                                    Primary model for text generation and question answering
+                                </p>
+                            </div>
+
+                            {/* Vision Model */}
+                            <div>
+                                <label className="block text-sm font-medium text-orion-text-secondary mb-2">
+                                    Vision Model
+                                </label>
+                                <select
+                                    value={settings.visionModel}
+                                    onChange={(e) => handleSettingChange('visionModel', e.target.value)}
+                                    className="input"
+                                >
+                                    {availableModels.vision.map((model) => (
+                                        <option key={model} value={model}>
+                                            {model.charAt(0).toUpperCase() + model.slice(1)}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-xs text-orion-text-muted mt-2">
+                                    Model for processing images and visual content
+                                </p>
+                            </div>
+                        </div>
+                    </section>
+
+                    {/* Chunk Configuration */}
+                    <section className="card p-6">
+                        <div className="flex items-center gap-3 mb-6">
+                            <Sliders size={20} className="text-orion-accent" />
+                            <h2 className="font-semibold text-orion-text-primary">Processing Settings</h2>
+                        </div>
+
+                        <div>
+                            <div className="flex items-center justify-between mb-2">
+                                <label className="text-sm font-medium text-orion-text-secondary">
+                                    Chunk Size (tokens)
+                                </label>
+                                <span className="text-sm font-mono text-orion-accent">{settings.chunkSize}</span>
+                            </div>
+
+                            <input
+                                type="range"
+                                min="256"
+                                max="2048"
+                                step="128"
+                                value={settings.chunkSize}
+                                onChange={(e) => handleSettingChange('chunkSize', parseInt(e.target.value))}
+                                className="w-full h-2 bg-orion-bg-elevated rounded-full appearance-none cursor-pointer accent-orion-accent"
+                            />
+
+                            <div className="flex justify-between text-xs text-orion-text-muted mt-2">
+                                <span>256</span>
+                                <span>1024</span>
+                                <span>2048</span>
+                            </div>
+
+                            <p className="text-xs text-orion-text-muted mt-4">
+                                Smaller chunks provide more precise retrieval but may lose context.
+                                Larger chunks preserve more context but may include irrelevant information.
+                            </p>
+                        </div>
+                    </section>
+
+                    {/* Backend Endpoint */}
+                    <section className="card p-6">
+                        <div className="flex items-center gap-3 mb-6">
+                            <Server size={20} className="text-orion-accent" />
+                            <h2 className="font-semibold text-orion-text-primary">Backend Configuration</h2>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-orion-text-secondary mb-2">
+                                Ollama Endpoint
+                            </label>
+                            <input
+                                type="text"
+                                value={settings.ollamaEndpoint}
+                                onChange={(e) => handleSettingChange('ollamaEndpoint', e.target.value)}
+                                placeholder="http://localhost:11434"
+                                className="input"
+                            />
+                            <p className="text-xs text-orion-text-muted mt-2">
+                                URL where your local Ollama instance is running
+                            </p>
+                        </div>
+                    </section>
+
+                    {/* About */}
+                    <section className="card p-6">
+                        <h2 className="font-semibold text-orion-text-primary mb-4">About ORION</h2>
+                        <div className="space-y-2 text-sm text-orion-text-secondary">
+                            <p>Version: 1.0.0</p>
+                            <p>Offline Multimodal RAG System</p>
+                            <p className="text-orion-text-muted">
+                                Built with Electron, React, and FastAPI. All processing happens locally on your machine.
+                            </p>
+                        </div>
+                    </section>
                 </div>
             </div>
-        </div>
-    )
-}
-
-function SettingsSection({ icon: Icon, title, description, children }) {
-    return (
-        <div className="card">
-            <div className="flex items-center gap-3 px-5 py-4 border-b border-orion-border-DEFAULT">
-                <Icon className="w-5 h-5 text-orion-accent" strokeWidth={1.5} />
-                <div>
-                    <h2 className="text-sm font-semibold text-orion-text-primary">{title}</h2>
-                    <p className="text-xs text-orion-text-muted">{description}</p>
-                </div>
-            </div>
-            <div className="p-5 space-y-4">
-                {children}
-            </div>
-        </div>
-    )
-}
-
-function SettingsRow({ label, description, children }) {
-    return (
-        <div className="flex items-center justify-between py-2">
-            <div>
-                <p className="text-sm text-orion-text-primary">{label}</p>
-                <p className="text-xs text-orion-text-muted">{description}</p>
-            </div>
-            {children}
-        </div>
-    )
-}
-
-function ToggleSwitch({ enabled, onChange }) {
-    return (
-        <button
-            onClick={() => onChange(!enabled)}
-            className={`relative w-11 h-6 rounded-full transition-colors ${enabled ? 'bg-orion-accent' : 'bg-orion-bg-elevated'}`}
-        >
-            <span
-                className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${enabled ? 'left-6' : 'left-1'}`}
-            />
-        </button>
-    )
-}
-
-function InfoCard({ label, value }) {
-    return (
-        <div className="p-3 bg-orion-bg-card rounded-lg">
-            <p className="text-xs text-orion-text-muted mb-1">{label}</p>
-            <p className="text-sm text-orion-text-primary font-medium truncate">{value}</p>
-        </div>
+        </main>
     )
 }

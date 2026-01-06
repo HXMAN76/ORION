@@ -1,98 +1,125 @@
 import { useRef, useEffect } from 'react'
-import { MessageSquare, Clock, Sparkles } from 'lucide-react'
+import { Sparkles, PanelRightOpen } from 'lucide-react'
 import useStore from '../store/store'
-import CommandDeck from '../components/query/CommandDeck'
-import ThoughtBlock from '../components/query/ThoughtBlock'
+import useStreamingResponse from '../hooks/useStreamingResponse'
+import ChatMessage from '../components/chat/ChatMessage'
+import ChatInput from '../components/chat/ChatInput'
 
 /**
- * QueryWorkspace - "Command Deck" style query interface
- * NOT a chat - structured reasoning blocks with evidence
+ * QueryWorkspace - Main chat interface view
+ * Features message history, streaming responses, and input area
  */
 export default function QueryWorkspace() {
-    const { sessions, activeCollection, collections } = useStore()
-    const scrollRef = useRef(null)
+    const { messages, isStreaming, isContextPanelOpen, setContextPanelOpen } = useStore()
+    const { sendQuery, isLoading } = useStreamingResponse()
+    const messagesEndRef = useRef(null)
 
-    // Auto-scroll to bottom on new sessions
+    // Auto-scroll to bottom on new messages
     useEffect(() => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-        }
-    }, [sessions])
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }, [messages])
 
-    const activeCollectionName = collections.find(c => c.id === activeCollection)?.name
+    const handleSend = (message) => {
+        sendQuery(message)
+    }
 
     return (
-        <div className="flex-1 flex flex-col min-w-0 bg-orion-bg-app">
+        <main className="flex-1 flex flex-col bg-orion-bg-app overflow-hidden">
             {/* Header */}
-            <header className="flex items-center justify-between px-6 py-4 border-b border-orion-border-DEFAULT bg-orion-bg-panel">
+            <div className="h-14 px-6 flex items-center justify-between border-b border-orion-border flex-shrink-0">
                 <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-orion-accent/20">
-                        <Sparkles className="w-4 h-4 text-orion-accent" strokeWidth={1.5} />
-                    </div>
-                    <div>
-                        <h1 className="text-base font-semibold text-orion-text-primary">
-                            Query Workspace
-                        </h1>
-                        {activeCollectionName ? (
-                            <p className="mono text-[11px] text-orion-text-muted">
-                                Querying: <span className="text-orion-accent">{activeCollectionName}</span>
-                            </p>
-                        ) : (
-                            <p className="mono text-[11px] text-orion-text-muted">
-                                All collections
-                            </p>
-                        )}
-                    </div>
+                    <Sparkles size={20} className="text-orion-accent" />
+                    <h1 className="font-semibold text-orion-text-primary">Chat</h1>
+                    {messages.length > 0 && (
+                        <span className="badge badge-muted">{messages.length} messages</span>
+                    )}
                 </div>
 
-                {sessions.length > 0 && (
-                    <div className="flex items-center gap-2 text-orion-text-muted">
-                        <Clock className="w-4 h-4" strokeWidth={1.5} />
-                        <span className="mono text-xs">{sessions.length} sessions</span>
-                    </div>
-                )}
-            </header>
+                <button
+                    onClick={() => setContextPanelOpen(!isContextPanelOpen)}
+                    className={`btn-icon ${isContextPanelOpen ? 'text-orion-accent' : ''}`}
+                    title="Toggle context panel"
+                >
+                    <PanelRightOpen size={20} />
+                </button>
+            </div>
 
-            {/* Sessions Area */}
-            <div
-                ref={scrollRef}
-                className="flex-1 overflow-y-auto scrollbar-orion"
-            >
-                {sessions.length === 0 ? (
-                    <EmptyWorkspace />
+            {/* Messages Area */}
+            <div className="flex-1 overflow-y-auto scrollbar-thin">
+                {messages.length === 0 ? (
+                    <EmptyState />
                 ) : (
                     <div className="max-w-4xl mx-auto px-6 py-6 space-y-6">
-                        {sessions.map((session) => (
-                            <ThoughtBlock key={session.id} session={session} />
+                        {messages.map((message) => (
+                            <ChatMessage key={message.id} message={message} />
                         ))}
+
+                        {/* Streaming indicator */}
+                        {isStreaming && (
+                            <div className="flex items-center gap-2 text-orion-text-muted">
+                                <div className="flex gap-1">
+                                    <span className="w-2 h-2 bg-orion-accent rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                                    <span className="w-2 h-2 bg-orion-accent rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                                    <span className="w-2 h-2 bg-orion-accent rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                                </div>
+                                <span className="text-sm">Generating response...</span>
+                            </div>
+                        )}
+
+                        <div ref={messagesEndRef} />
                     </div>
                 )}
             </div>
 
-            {/* Command Deck (Bottom Input) */}
-            <CommandDeck />
-        </div>
+            {/* Input Area */}
+            <ChatInput onSend={handleSend} isLoading={isLoading || isStreaming} />
+        </main>
     )
 }
 
-function EmptyWorkspace() {
+/**
+ * Empty state when no messages
+ */
+function EmptyState() {
+    const suggestedQueries = [
+        "What are the key findings in my research papers?",
+        "Summarize the main points from the uploaded documents",
+        "Find information about machine learning techniques",
+        "Compare the methodologies across my documents",
+    ]
+
+    const { sendQuery } = useStreamingResponse()
+
     return (
-        <div className="flex flex-col items-center justify-center h-full text-center px-6">
-            <div className="w-16 h-16 rounded-2xl bg-orion-bg-card border border-orion-border-DEFAULT flex items-center justify-center mb-6">
-                <MessageSquare className="w-7 h-7 text-orion-text-muted" strokeWidth={1.5} />
+        <div className="h-full flex flex-col items-center justify-center px-6 py-12">
+            <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-orion-accent/20 to-orion-accent/5 flex items-center justify-center mb-8">
+                <Sparkles size={36} className="text-orion-accent" />
             </div>
-            <h2 className="text-xl font-semibold text-orion-text-primary mb-2">
-                Ready for Investigation
+
+            <h2 className="text-2xl font-semibold text-orion-text-primary mb-3">
+                Welcome to ORION
             </h2>
-            <p className="text-orion-text-muted max-w-md leading-relaxed mb-6">
-                Enter your query below to search your knowledge base.
-                Responses include citations linked to source documents.
+            <p className="text-orion-text-secondary text-center max-w-md mb-10">
+                Your offline multimodal intelligence workspace. Ask questions about your documents and get AI-powered answers with source citations.
             </p>
-            <div className="flex items-center gap-3 mono text-xs text-orion-text-muted">
-                <kbd className="px-2 py-1 rounded bg-orion-bg-elevated border border-orion-border-DEFAULT">Ctrl</kbd>
-                <span>+</span>
-                <kbd className="px-2 py-1 rounded bg-orion-bg-elevated border border-orion-border-DEFAULT">Enter</kbd>
-                <span className="text-orion-text-muted">to submit query</span>
+
+            <div className="w-full max-w-2xl">
+                <h3 className="text-sm font-medium text-orion-text-muted mb-4 text-center">
+                    Try asking...
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {suggestedQueries.map((query, index) => (
+                        <button
+                            key={index}
+                            onClick={() => sendQuery(query)}
+                            className="p-4 text-left bg-orion-bg-card border border-orion-border rounded-2xl hover:border-orion-accent/30 hover:bg-orion-bg-elevated transition-fast group"
+                        >
+                            <p className="text-sm text-orion-text-secondary group-hover:text-orion-text-primary transition-fast">
+                                {query}
+                            </p>
+                        </button>
+                    ))}
+                </div>
             </div>
         </div>
     )
