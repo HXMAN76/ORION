@@ -1,21 +1,20 @@
-"""File ingestion endpoints"""
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
-from typing import List, Optional
+from fastapi import APIRouter, UploadFile, File, HTTPException
 from pathlib import Path
 import shutil
 
-from ..models import IngestRequest, IngestResponse
-from ...config import config
-from ...processors import PDFProcessor, DOCXProcessor, ImageProcessor, VoiceProcessor
-from ...vectorstore import ChromaStore
-
+from config import config
+from vectorstore import ChromaStore
+from processors import (
+    PDFProcessor,
+    DOCXProcessor,
+    ImageProcessor,
+    VoiceProcessor,
+)
 
 router = APIRouter()
 
-# Initialize components
 store = ChromaStore()
 
-# Processor registry
 PROCESSORS = {
     ".pdf": PDFProcessor(),
     ".docx": DOCXProcessor(),
@@ -23,145 +22,48 @@ PROCESSORS = {
     ".png": ImageProcessor(),
     ".jpg": ImageProcessor(),
     ".jpeg": ImageProcessor(),
-    ".webp": ImageProcessor(),
     ".bmp": ImageProcessor(),
+    ".webp": ImageProcessor(),
     ".mp3": VoiceProcessor(),
     ".wav": VoiceProcessor(),
-    ".m4a": VoiceProcessor(),
-    ".ogg": VoiceProcessor(),
-    ".flac": VoiceProcessor(),
 }
 
 
-@router.post("/ingest", response_model=IngestResponse)
+@router.post("/ingest")
 async def ingest_file(
     file: UploadFile = File(...),
-    collections: Optional[str] = Form(default=None)
+    collections: list[str] | None = None,
 ):
-    """
-    Upload and process a file for RAG.
-    
-    Supports: PDF, DOCX, Images (PNG, JPG, etc.), Audio (MP3, WAV, etc.)
-    """
-    # Parse collections from comma-separated string
-    collection_list = []
-    if collections:
-        collection_list = [c.strip() for c in collections.split(",") if c.strip()]
-    
-    # Validate file extension
-    filename = file.filename or "unknown"
-    ext = Path(filename).suffix.lower()
-    
-    if ext not in PROCESSORS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type: {ext}. Supported: {list(PROCESSORS.keys())}"
-        )
-    
-    # Save uploaded file
-    upload_path = config.UPLOADS_DIR / filename
-    
-    try:
-        with open(upload_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save file: {e}")
-    
-    try:
-        # Get appropriate processor
-        processor = PROCESSORS[ext]
-        
-        # Process the file
-        chunks = processor.process(upload_path)
-        
-        if not chunks:
-            raise HTTPException(status_code=400, detail="No content extracted from file")
-        
-        # Add to vector store
-        chunk_ids = store.add_chunks(chunks, collections=collection_list)
-        
-        # Get document info
-        document_id = chunks[0].document_id if chunks else ""
-        doc_type = chunks[0].doc_type if chunks else "unknown"
-        
-        return IngestResponse(
-            document_id=document_id,
-            filename=filename,
-            doc_type=doc_type,
-            chunks_created=len(chunk_ids),
-            collections=collection_list
-        )
-    
-    except Exception as e:
-        # Clean up on failure
-        if upload_path.exists():
-            upload_path.unlink()
-        raise HTTPException(status_code=500, detail=f"Processing failed: {e}")
+    suffix = Path(file.filename).suffix.lower()
 
+    if suffix not in PROCESSORS:
+        raise HTTPException(status_code=400, detail="Unsupported file type")
 
-@router.post("/ingest/batch")
-async def ingest_batch(
-    files: List[UploadFile] = File(...),
-    collections: Optional[str] = Form(default=None)
-):
-    """
-    Upload and process multiple files.
-    """
-    results = []
-    errors = []
-    
-    collection_list = []
-    if collections:
-        collection_list = [c.strip() for c in collections.split(",") if c.strip()]
-    
-    for file in files:
-        try:
-            # Process each file
-            filename = file.filename or "unknown"
-            ext = Path(filename).suffix.lower()
-            
-            if ext not in PROCESSORS:
-                errors.append({"file": filename, "error": f"Unsupported type: {ext}"})
-                continue
-            
-            # Save file
-            upload_path = config.UPLOADS_DIR / filename
-            with open(upload_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-            
-            # Process
-            processor = PROCESSORS[ext]
-            chunks = processor.process(upload_path)
-            
-            if chunks:
-                chunk_ids = store.add_chunks(chunks, collections=collection_list)
-                results.append({
-                    "file": filename,
-                    "document_id": chunks[0].document_id,
-                    "chunks": len(chunk_ids)
-                })
-            else:
-                errors.append({"file": filename, "error": "No content extracted"})
-        
-        except Exception as e:
-            errors.append({"file": file.filename, "error": str(e)})
-    
-    return {
-        "processed": len(results),
-        "failed": len(errors),
-        "results": results,
-        "errors": errors
-    }
+    processor = PROCESSORS[suffix]
 
+    upload_path = config.UPLOADS_DIR / file.filename
 
-@router.get("/ingest/supported")
-async def get_supported_types():
-    """Get list of supported file types"""
-    return {
-        "extensions": list(PROCESSORS.keys()),
-        "types": {
-            "documents": [".pdf", ".docx", ".doc"],
-            "images": [".png", ".jpg", ".jpeg", ".webp", ".bmp"],
-            "audio": [".mp3", ".wav", ".m4a", ".ogg", ".flac"]
+    with open(upload_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    # ✅ STEP 1: PROCESS → GET CHUNKS
+    chunks = processor.process(upload_path)
+
+    if not chunks:
+        return {
+            "filename": file.filename,
+            "doc_type": processor.doc_type,
+            "chunks_created": 0,
+            "collections": collections or [config.COLLECTION_NAME],
         }
+
+    # ✅ STEP 2: STORE (NO RETURN EXPECTED)
+    store.add_chunks(chunks, collections=collections)
+
+    # ✅ STEP 3: COUNT SAFELY
+    return {
+        "filename": file.filename,
+        "doc_type": processor.doc_type,
+        "chunks_created": len(chunks),
+        "collections": collections or [config.COLLECTION_NAME],
     }
