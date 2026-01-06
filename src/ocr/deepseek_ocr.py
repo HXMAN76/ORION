@@ -289,7 +289,13 @@ class DeepSeekOCR:
             models = client.list()
             
             # Check if DeepSeek model is in the list
-            model_names = [m["name"] for m in models.get("models", [])]
+            # Handle both new API (Model objects) and old API (dict)
+            model_names = []
+            for m in getattr(models, 'models', []):
+                if hasattr(m, 'model'):
+                    model_names.append(m.model)
+                elif isinstance(m, dict):
+                    model_names.append(m.get('name', ''))
             return any(self.model_name in name for name in model_names)
         
         except Exception as e:
