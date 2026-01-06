@@ -72,11 +72,23 @@ export default function CollectionsManager() {
         fetchData()
     }, [fetchData])
 
+    // Extract just the filename from a full path
+    const getFileName = (path) => {
+        if (!path) return 'Unknown'
+        // Handle both forward and backward slashes
+        const parts = path.replace(/\\/g, '/').split('/')
+        return parts[parts.length - 1] || path
+    }
+
+    // Ensure documents is always an array
+    const docsList = Array.isArray(documents) ? documents : []
+
     // Filter documents
-    const filteredDocuments = documents.filter((doc) => {
-        const matchesSearch = doc.name?.toLowerCase().includes(searchQuery.toLowerCase())
-        const matchesCollection = activeCollection === 'all' ||
-            (doc.collections && doc.collections.includes(activeCollection))
+    const filteredDocuments = docsList.filter((doc) => {
+        const fileName = getFileName(doc.name)
+        const matchesSearch = fileName?.toLowerCase().includes(searchQuery.toLowerCase())
+        const matchesCollection = selectedCollection === 'all' ||
+            (doc.collections && doc.collections.includes(selectedCollection))
         return matchesSearch && matchesCollection
     })
 
@@ -175,7 +187,7 @@ export default function CollectionsManager() {
                         <div>
                             <h1 className="text-xl font-semibold text-orion-text-primary">Library</h1>
                             <p className="text-sm text-orion-text-muted">
-                                {documents.length} document{documents.length !== 1 ? 's' : ''} in your knowledge base
+                                {docsList.length} document{docsList.length !== 1 ? 's' : ''} in your knowledge base
                             </p>
                         </div>
                     </div>
@@ -285,6 +297,7 @@ export default function CollectionsManager() {
                                     bg={bg}
                                     onDelete={handleDeleteDocument}
                                     isDeleting={deletingId === doc.document_id}
+                                    getFileName={getFileName}
                                 />
                             )
                         })}
@@ -303,6 +316,7 @@ export default function CollectionsManager() {
                                     formatDate={formatDate}
                                     onDelete={handleDeleteDocument}
                                     isDeleting={deletingId === doc.document_id}
+                                    getFileName={getFileName}
                                 />
                             )
                         })}
@@ -359,14 +373,15 @@ export default function CollectionsManager() {
     )
 }
 
-function DocumentCard({ doc, Icon, color, bg, onDelete, isDeleting }) {
+function DocumentCard({ doc, Icon, color, bg, onDelete, isDeleting, getFileName }) {
+    const fileName = getFileName(doc.name)
     return (
         <div className="card p-4 hover:border-orion-accent/30 transition-fast group cursor-pointer relative">
             <div className={`w-12 h-12 rounded-xl ${bg} flex items-center justify-center mb-4`}>
                 <Icon size={24} className={color} />
             </div>
             <h3 className="font-medium text-orion-text-primary truncate mb-1 group-hover:text-orion-accent transition-fast">
-                {doc.name}
+                {fileName}
             </h3>
             <p className="text-xs text-orion-text-muted">
                 {doc.chunks || 0} chunks • {doc.doc_type || 'unknown'}
@@ -397,7 +412,8 @@ function DocumentCard({ doc, Icon, color, bg, onDelete, isDeleting }) {
     )
 }
 
-function DocumentRow({ doc, Icon, color, bg, formatDate, onDelete, isDeleting }) {
+function DocumentRow({ doc, Icon, color, bg, formatDate, onDelete, isDeleting, getFileName }) {
+    const fileName = getFileName(doc.name)
     return (
         <div className="flex items-center gap-4 p-4 bg-orion-bg-card border border-orion-border rounded-xl hover:border-orion-accent/30 transition-fast group">
             <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center flex-shrink-0`}>
@@ -405,15 +421,12 @@ function DocumentRow({ doc, Icon, color, bg, formatDate, onDelete, isDeleting })
             </div>
             <div className="flex-1 min-w-0">
                 <h3 className="font-medium text-orion-text-primary truncate group-hover:text-orion-accent transition-fast">
-                    {doc.name}
+                    {fileName}
                 </h3>
                 <p className="text-xs text-orion-text-muted">
                     {doc.chunks || 0} chunks • {doc.doc_type || 'unknown'}
                     {doc.collections && doc.collections.length > 0 && ` • ${doc.collections.join(', ')}`}
                 </p>
-            </div>
-            <div className="text-sm text-orion-text-muted">
-                {formatDate(doc.created_at)}
             </div>
             <div className="flex items-center gap-1">
                 <button className="btn-icon">

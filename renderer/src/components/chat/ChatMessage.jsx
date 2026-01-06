@@ -70,26 +70,43 @@ export default function ChatMessage({ message }) {
                         {/* Expanded Sources */}
                         {showSources && (
                             <div className="mt-2 ml-2 space-y-1.5">
-                                {message.sources.map((source, index) => (
-                                    <button
-                                        key={index}
-                                        className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-xl bg-orion-bg-elevated hover:bg-orion-bg-hover transition-fast group"
-                                    >
-                                        <div className="w-7 h-7 rounded-lg bg-orion-bg-card flex items-center justify-center flex-shrink-0">
-                                            <FileText size={14} className="text-orion-accent" />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm text-orion-text-primary truncate font-medium">
-                                                {source.filename || source.file_name || 'Unknown Source'}
-                                            </p>
-                                            <p className="text-xs text-orion-text-muted">
-                                                {source.page && `Page ${source.page}`}
-                                                {source.timestamp && `@ ${source.timestamp}`}
-                                                {source.score && ` • ${Math.round(source.score * 100)}% match`}
-                                            </p>
-                                        </div>
-                                    </button>
-                                ))}
+                                {message.sources.map((source, index) => {
+                                    // Get the full path for opening
+                                    const fullPath = source.file_name || source.filename || ''
+                                    // Extract just the filename for display
+                                    const displayName = fullPath ? fullPath.replace(/\\/g, '/').split('/').pop() : 'Unknown Source'
+
+                                    // Open file handler
+                                    const handleOpenFile = () => {
+                                        if (fullPath) {
+                                            const fileUrl = `file:///${fullPath.replace(/\\/g, '/')}`
+                                            window.open(fileUrl, '_blank')
+                                        }
+                                    }
+
+                                    return (
+                                        <button
+                                            key={index}
+                                            onClick={handleOpenFile}
+                                            className="w-full text-left flex items-center gap-3 px-3 py-2 rounded-xl bg-orion-bg-elevated hover:bg-orion-bg-hover transition-fast group"
+                                            title={`Open: ${fullPath}`}
+                                        >
+                                            <div className="w-7 h-7 rounded-lg bg-orion-bg-card flex items-center justify-center flex-shrink-0">
+                                                <FileText size={14} className="text-orion-accent" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm text-orion-text-primary truncate font-medium">
+                                                    {displayName}
+                                                </p>
+                                                <p className="text-xs text-orion-text-muted">
+                                                    {source.page && `Page ${source.page}`}
+                                                    {source.timestamp && `@ ${source.timestamp}`}
+                                                    {source.score && ` • ${Math.round(source.score * 100)}% match`}
+                                                </p>
+                                            </div>
+                                        </button>
+                                    )
+                                })}
                             </div>
                         )}
                     </div>

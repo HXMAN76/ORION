@@ -130,20 +130,34 @@ export default function ContextPanel() {
                         <div className="space-y-2">
                             {activeSources.map((source, index) => {
                                 // Handle both backend and mapped formats
-                                const filename = source.file || source.filename || 'Unknown'
+                                const fullPath = source.file || source.filename || ''
                                 const location = source.location
                                 const score = source.similarity || source.score
                                 const docType = source.type || 'document'
 
+                                // Extract just the filename for display
+                                const displayName = fullPath ? fullPath.replace(/\\/g, '/').split('/').pop() : 'Unknown'
+
+                                // Open file in new tab
+                                const handleOpenFile = () => {
+                                    if (fullPath) {
+                                        // Convert to file:// URL (handle Windows paths)
+                                        const fileUrl = `file:///${fullPath.replace(/\\/g, '/')}`
+                                        window.open(fileUrl, '_blank')
+                                    }
+                                }
+
                                 return (
                                     <button
                                         key={index}
+                                        onClick={handleOpenFile}
                                         className="w-full text-left card p-3 hover:bg-orion-bg-hover transition-fast group"
+                                        title={`Open: ${fullPath}`}
                                     >
                                         <div className="flex items-center justify-between">
                                             <div className="flex-1 min-w-0">
                                                 <p className="text-sm font-medium text-orion-text-primary truncate">
-                                                    {filename}
+                                                    {displayName}
                                                 </p>
                                                 <p className="text-xs text-orion-text-muted mt-0.5">
                                                     {docType}

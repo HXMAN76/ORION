@@ -75,7 +75,9 @@ export default function IngestionPanel() {
                         collections: response.collections || [],
                         created_at: new Date().toISOString(),
                     }
-                    setDocuments([...documents, newDoc])
+                    // Get current documents from store and append
+                    const currentDocs = useStore.getState().documents || []
+                    setDocuments([...currentDocs, newDoc])
                 } catch (err) {
                     updateIngestionStatus(item.id, 'error')
                     throw err
@@ -97,14 +99,15 @@ export default function IngestionPanel() {
                 let successCount = 0
 
                 if (response.results) {
+                    const newDocs = []
                     response.results.forEach((result) => {
                         const item = files.find(f => f.name === result.file)
                         if (item) {
                             updateIngestionStatus(item.id, 'done')
                             successCount++
 
-                            // Add to local documents state
-                            const newDoc = {
+                            // Collect new documents
+                            newDocs.push({
                                 id: result.document_id,
                                 document_id: result.document_id,
                                 name: result.file,
@@ -113,10 +116,12 @@ export default function IngestionPanel() {
                                 chunks: result.chunks,
                                 collections: collections,
                                 created_at: new Date().toISOString(),
-                            }
-                            setDocuments(prev => [...prev, newDoc])
+                            })
                         }
                     })
+                    // Get current documents and append all new docs at once
+                    const currentDocs = useStore.getState().documents || []
+                    setDocuments([...currentDocs, ...newDocs])
                 }
 
                 if (response.errors) {
@@ -138,12 +143,13 @@ export default function IngestionPanel() {
             setSuccess(true)
             setIngesting(true, 100)
 
-            // Clear queue after delay
+            // Close dialog after showing success message
             setTimeout(() => {
                 clearIngestionQueue()
                 setSuccess(false)
                 setProcessedCount(0)
-            }, 2000)
+                setIngestionOpen(false) // Auto-close the dialog
+            }, 1500)
 
         } catch (err) {
             setError(err.message)
