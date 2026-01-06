@@ -25,6 +25,7 @@ class Config:
     EMBEDDING_MODEL: str = "nomic-embed-text"
     LLM_MODEL: str = "mistral:7b"
     VISION_MODEL: str = "llava"
+    DEEPSEEK_MODEL: str = "deepseek-vl"  # DeepSeek vision model for OCR
     
     # Vector Store
     COLLECTION_NAME: str = "orion_chunks"
